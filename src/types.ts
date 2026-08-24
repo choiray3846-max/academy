@@ -42,11 +42,13 @@ export interface Room {
 export interface Teacher {
   id: ID;
   name: string;
-  /** 소속 지점(겸임 가능) */
+  /** 소속 지점(겸임 가능). 단일 지점 운영에서는 쓰지 않지만 데이터 호환을 위해 남겨 둔다. */
   branchIds: ID[];
   subject?: string;
   phone?: string;
   color?: string;
+  /** 연간 연차 일수 (예: 15). 미설정이면 연차 관리 대상이 아니다. */
+  annualLeaveTotal?: number;
   archived?: boolean;
 }
 
@@ -114,6 +116,11 @@ export interface Shift {
   endTime?: TimeStr;
   /** 대강일 때, 누구의 수업을 대신하는지 */
   subForTeacherId?: ID;
+  /**
+   * 휴무(type='off')일 때 연차에서 차감할 일수.
+   * 1 = 연차, 0.5 = 반차. 없으면 연차 차감 없는 일반 휴무.
+   */
+  leaveDays?: number;
   memo?: string;
 }
 

@@ -21,25 +21,17 @@ export function createSeedData(): AcademyData {
       weekStartsOn: 0,
       theme: 'system',
     },
-    branches: [
-      { id: 'b1', name: '본원', color: '#2f6fed', phone: '02-000-0001' },
-      { id: 'b2', name: '2관', color: '#0e9f6e', phone: '02-000-0002' },
-      { id: 'b3', name: '신도시점', color: '#d9480f', phone: '031-000-0003' },
-    ],
+    branches: [{ id: 'b1', name: '본원', color: '#2f6fed' }],
     rooms: [
       { id: 'r1', branchId: 'b1', name: '101호', capacity: 20 },
       { id: 'r2', branchId: 'b1', name: '102호', capacity: 16 },
       { id: 'r3', branchId: 'b1', name: '상담실', capacity: 4 },
-      { id: 'r4', branchId: 'b2', name: 'A강의실', capacity: 24 },
-      { id: 'r5', branchId: 'b2', name: 'B강의실', capacity: 12 },
-      { id: 'r6', branchId: 'b3', name: '대강의실', capacity: 40 },
-      { id: 'r7', branchId: 'b3', name: '소강의실', capacity: 10 },
     ],
     teachers: [
-      { id: 't1', name: '김선우', branchIds: ['b1', 'b2'], subject: '수학', color: '#7048e8' },
-      { id: 't2', name: '이하늘', branchIds: ['b1'], subject: '영어', color: '#0ca678' },
-      { id: 't3', name: '박도윤', branchIds: ['b2', 'b3'], subject: '국어', color: '#e8590c' },
-      { id: 't4', name: '정서연', branchIds: ['b3'], subject: '과학', color: '#1c7ed6' },
+      { id: 't1', name: '김선우', branchIds: ['b1'], subject: '수학', color: '#7048e8', annualLeaveTotal: 15 },
+      { id: 't2', name: '이하늘', branchIds: ['b1'], subject: '영어', color: '#0ca678', annualLeaveTotal: 15 },
+      { id: 't3', name: '박도윤', branchIds: ['b1'], subject: '국어', color: '#e8590c', annualLeaveTotal: 11 },
+      { id: 't4', name: '정서연', branchIds: ['b1'], subject: '과학', color: '#1c7ed6', annualLeaveTotal: 15 },
     ],
     // 수업 시간표는 운영 방식 확정 전이라 비워 둔다 (schedule.ts의 CLASS_MODULE_ENABLED 참고)
     classes: [
@@ -47,7 +39,7 @@ export function createSeedData(): AcademyData {
     events: [
       {
         id: 'e1',
-        title: '전 지점 모의고사',
+        title: '모의고사',
         category: 'exam',
         branchIds: [],
         startDate: addDays(monthStart, 9),
@@ -55,14 +47,14 @@ export function createSeedData(): AcademyData {
         allDay: false,
         startTime: '09:00',
         endTime: '17:00',
-        memo: '전 학년 응시. 지점별 고사장 배정 확인 필요.',
+        memo: '전 학년 응시.',
         publicVisible: true,
       },
       {
         id: 'e2',
         title: '학부모 설명회',
         category: 'briefing',
-        branchIds: ['b1'],
+        branchIds: [],
         startDate: addDays(monthStart, 16),
         endDate: addDays(monthStart, 16),
         allDay: false,
@@ -72,20 +64,20 @@ export function createSeedData(): AcademyData {
       },
       {
         id: 'e3',
-        title: '전 지점 휴원',
+        title: '휴원일',
         category: 'holiday',
         branchIds: [],
         startDate: addDays(monthStart, 21),
         endDate: addDays(monthStart, 21),
         allDay: true,
-        memo: '내부 연수로 전 지점 휴원합니다.',
+        memo: '내부 연수로 휴원합니다.',
         publicVisible: true,
       },
       {
         id: 'e4',
         title: '겨울 특강 주간',
         category: 'vacation',
-        branchIds: ['b2', 'b3'],
+        branchIds: [],
         startDate: addDays(monthStart, 24),
         endDate: addDays(monthStart, 28),
         allDay: true,
@@ -99,7 +91,8 @@ export function createSeedData(): AcademyData {
         branchId: 'b1',
         type: 'off',
         date: addDays(monthStart, 11),
-        memo: '개인 사정',
+        leaveDays: 1,
+        memo: '연차 사용',
       },
       {
         id: 's2',
@@ -115,7 +108,7 @@ export function createSeedData(): AcademyData {
       {
         id: 's3',
         teacherId: 't4',
-        branchId: 'b3',
+        branchId: 'b1',
         type: 'work',
         date: addDays(monthStart, 13),
         startTime: '13:00',
@@ -139,7 +132,7 @@ export function createSeedData(): AcademyData {
       },
       {
         id: 'k2',
-        branchId: 'b2',
+        branchId: 'b1',
         date: addDays(monthStart, 6),
         startTime: '16:00',
         endTime: '16:40',
@@ -150,7 +143,7 @@ export function createSeedData(): AcademyData {
       },
       {
         id: 'k3',
-        branchId: 'b3',
+        branchId: 'b1',
         date: addDays(monthStart, 14),
         startTime: '11:00',
         endTime: '11:40',
@@ -169,7 +162,8 @@ export function createEmptyData(): AcademyData {
   return {
     version: seed.version,
     settings: { ...seed.settings, academyName: '우리 학원' },
-    branches: [],
+    // 화면에는 안 보이지만 상담 등 레코드가 지점 id를 요구하므로 기본 1개는 둔다.
+    branches: [{ id: 'b1', name: '우리 학원', color: '#2f6fed' }],
     rooms: [],
     teachers: [],
     classes: [],

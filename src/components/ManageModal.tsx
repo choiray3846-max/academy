@@ -1,12 +1,13 @@
 import { useRef, useState } from 'react';
-import type { AcademyData, Branch, Teacher } from '../types';
+import type { AcademyData, Teacher } from '../types';
 import { Modal } from './Modal';
 import { newId } from '../lib/id';
 import { exportToJson, importFromJson } from '../lib/storage';
+import { leaveEntriesInYear, leaveUsedInYear } from '../lib/schedule';
 import { createEmptyData } from '../data/seed';
 import { today } from '../lib/date';
 
-type Tab = 'branches' | 'teachers' | 'settings' | 'backup';
+type Tab = 'teachers' | 'leave' | 'settings' | 'backup';
 
 interface ManageModalProps {
   data: AcademyData;
@@ -19,52 +20,14 @@ const PALETTE = ['#2f6fed', '#0e9f6e', '#d9480f', '#7048e8', '#d6336c', '#1c7ed6
 
 /** 지점·강사·설정·백업을 한 모달에서 관리한다. (원장 모드 전용) */
 export function ManageModal({ data, update, replaceAll, onClose }: ManageModalProps) {
-  const [tab, setTab] = useState<Tab>('branches');
+  const [tab, setTab] = useState<Tab>('teachers');
+  const [leaveYear, setLeaveYear] = useState(() => Number(today().slice(0, 4)));
   const fileRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState('');
 
-  /* ----- 지점 ----- */
-  function addBranch() {
-    const name = window.prompt('새 지점 이름을 입력하세요.');
-    if (!name?.trim()) return;
-    update((prev) => ({
-      ...prev,
-      branches: [
-        ...prev.branches,
-        {
-          id: newId('b'),
-          name: name.trim(),
-          color: PALETTE[prev.branches.length % PALETTE.length],
-        },
-      ],
-    }));
-  }
-
-  function patchBranch(id: string, patch: Partial<Branch>) {
-    update((prev) => ({
-      ...prev,
-      branches: prev.branches.map((b) => (b.id === id ? { ...b, ...patch } : b)),
-    }));
-  }
-
-  function removeBranch(b: Branch) {
-    const used =
-      data.events.some((e) => e.branchIds.includes(b.id)) ||
-      data.consultations.some((k) => k.branchId === b.id) ||
-      data.shifts.some((s) => s.branchId === b.id);
-    if (used) {
-      window.alert(
-        `'${b.name}' 지점에 연결된 일정이 있어 삭제할 수 없습니다.\n대신 '숨김' 처리해 주세요. (기존 일정은 유지됩니다)`,
-      );
-      return;
-    }
-    if (!window.confirm(`'${b.name}' 지점을 삭제할까요?`)) return;
-    update((prev) => ({ ...prev, branches: prev.branches.filter((x) => x.id !== b.id) }));
-  }
-
-  /* ----- 강사 ----- */
+  /* ----- 직원 ----- */
   function addTeacher() {
-    const name = window.prompt('새 강사 이름을 입력하세요.');
+    const name = window.prompt('새 직원 이름을 입력하세요.');
     if (!name?.trim()) return;
     update((prev) => ({
       ...prev,
@@ -75,6 +38,7 @@ export function ManageModal({ data, update, replaceAll, onClose }: ManageModalPr
           name: name.trim(),
           branchIds: [],
           color: PALETTE[(prev.teachers.length + 3) % PALETTE.length],
+          annualLeaveTotal: 15,
         },
       ],
     }));
@@ -93,11 +57,11 @@ export function ManageModal({ data, update, replaceAll, onClose }: ManageModalPr
       data.consultations.some((k) => k.counselorId === t.id);
     if (used) {
       window.alert(
-        `'${t.name}' 강사에게 연결된 일정이 있어 삭제할 수 없습니다.\n대신 '숨김' 처리해 주세요.`,
+        `'${t.name}' 님에게 연결된 일정이 있어 삭제할 수 없습니다.\n대신 '숨김' 처리해 주세요.`,
       );
       return;
     }
-    if (!window.confirm(`'${t.name}' 강사를 삭제할까요?`)) return;
+    if (!window.confirm(`'${t.name}' 님을 삭제할까요?`)) return;
     update((prev) => ({ ...prev, teachers: prev.teachers.filter((x) => x.id !== t.id) }));
   }
 
@@ -147,8 +111,8 @@ export function ManageModal({ data, update, replaceAll, onClose }: ManageModalPr
   return (
     <Modal title="학원 관리" onClose={onClose} wide>
       <div className="tabs" style={{ margin: '-16px -18px 0', paddingTop: 0 }}>
-        <button className={tab === 'branches' ? 'active' : ''} onClick={() => setTab('branches')}>지점</button>
-        <button className={tab === 'teachers' ? 'active' : ''} onClick={() => setTab('teachers')}>강사</button>
+        <button className={tab === 'teachers' ? 'active' : ''} onClick={() => setTab('teachers')}>직원</button>
+        <button className={tab === 'leave' ? 'active' : ''} onClick={() => setTab('leave')}>연차 현황</button>
         <button className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}>설정</button>
         <button className={tab === 'backup' ? 'active' : ''} onClick={() => setTab('backup')}>백업·초기화</button>
       </div>
@@ -157,48 +121,6 @@ export function ManageModal({ data, update, replaceAll, onClose }: ManageModalPr
         <div className="form-error" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
           {message}
         </div>
-      )}
-
-      {tab === 'branches' && (
-        <>
-          <div className="manage-list">
-            {data.branches.map((b) => (
-              <div key={b.id} className="manage-item" style={{ opacity: b.archived ? 0.5 : 1 }}>
-                <input
-                  type="color"
-                  value={b.color}
-                  onChange={(e) => patchBranch(b.id, { color: e.target.value })}
-                  style={{ width: 34, height: 30, padding: 2 }}
-                  title="지점 색"
-                />
-                <div className="grow">
-                  <input
-                    className="name"
-                    value={b.name}
-                    onChange={(e) => patchBranch(b.id, { name: e.target.value })}
-                    style={{ border: 'none', background: 'transparent', fontWeight: 600, width: '100%', padding: 0 }}
-                  />
-                  <input
-                    value={b.phone ?? ''}
-                    placeholder="전화번호"
-                    onChange={(e) => patchBranch(b.id, { phone: e.target.value })}
-                    style={{ border: 'none', background: 'transparent', fontSize: 12, color: 'var(--text-3)', width: '100%', padding: 0 }}
-                  />
-                </div>
-                <button onClick={() => patchBranch(b.id, { archived: !b.archived })}>
-                  {b.archived ? '숨김 해제' : '숨김'}
-                </button>
-                <button className="danger" onClick={() => removeBranch(b)}>삭제</button>
-              </div>
-            ))}
-            {data.branches.length === 0 && (
-              <div className="empty" style={{ color: 'var(--text-3)', textAlign: 'center', padding: 20 }}>
-                아직 지점이 없습니다.
-              </div>
-            )}
-          </div>
-          <button className="primary" onClick={addBranch}>+ 지점 추가</button>
-        </>
       )}
 
       {tab === 'teachers' && (
@@ -226,24 +148,24 @@ export function ManageModal({ data, update, replaceAll, onClose }: ManageModalPr
                     style={{ border: 'none', background: 'transparent', fontSize: 12, color: 'var(--text-3)', width: '100%', padding: 0 }}
                   />
                 </div>
-                <div className="check-row" style={{ fontSize: 12 }}>
-                  {data.branches.filter((b) => !b.archived).map((b) => (
-                    <label key={b.id}>
-                      <input
-                        type="checkbox"
-                        checked={t.branchIds.includes(b.id)}
-                        onChange={(e) =>
-                          patchTeacher(t.id, {
-                            branchIds: e.target.checked
-                              ? [...t.branchIds, b.id]
-                              : t.branchIds.filter((x) => x !== b.id),
-                          })
-                        }
-                      />
-                      {b.name}
-                    </label>
-                  ))}
-                </div>
+                <label style={{ fontSize: 12, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  연차
+                  <input
+                    type="number"
+                    min={0}
+                    max={40}
+                    step={0.5}
+                    value={t.annualLeaveTotal ?? ''}
+                    placeholder="-"
+                    onChange={(e) =>
+                      patchTeacher(t.id, {
+                        annualLeaveTotal: e.target.value === '' ? undefined : Number(e.target.value),
+                      })
+                    }
+                    style={{ width: 62 }}
+                  />
+                  일/년
+                </label>
                 <button onClick={() => patchTeacher(t.id, { archived: !t.archived })}>
                   {t.archived ? '숨김 해제' : '숨김'}
                 </button>
@@ -252,11 +174,68 @@ export function ManageModal({ data, update, replaceAll, onClose }: ManageModalPr
             ))}
             {data.teachers.length === 0 && (
               <div style={{ color: 'var(--text-3)', textAlign: 'center', padding: 20 }}>
-                아직 강사가 없습니다.
+                아직 직원이 없습니다.
               </div>
             )}
           </div>
-          <button className="primary" onClick={addTeacher}>+ 강사 추가</button>
+          <button className="primary" onClick={addTeacher}>+ 직원 추가</button>
+        </>
+      )}
+
+      {tab === 'leave' && (
+        <>
+          <div className="check-row" style={{ justifyContent: 'center' }}>
+            <button onClick={() => setLeaveYear((y) => y - 1)}>◀</button>
+            <b style={{ fontSize: 15 }}>{leaveYear}년</b>
+            <button onClick={() => setLeaveYear((y) => y + 1)}>▶</button>
+          </div>
+          <table className="leave-table">
+            <thead>
+              <tr>
+                <th>직원</th>
+                <th>총 연차</th>
+                <th>사용</th>
+                <th>잔여</th>
+                <th>사용일</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.teachers.filter((t) => !t.archived).map((t) => {
+                const used = leaveUsedInYear(data, t.id, leaveYear);
+                const entries = leaveEntriesInYear(data, t.id, leaveYear);
+                const remain = t.annualLeaveTotal != null ? t.annualLeaveTotal - used : null;
+                return (
+                  <tr key={t.id}>
+                    <td>
+                      <span className="color-dot" style={{ background: t.color ?? '#868e96' }} />
+                      {t.name}
+                    </td>
+                    <td>{t.annualLeaveTotal ?? <span className="muted">미설정</span>}</td>
+                    <td>{used}</td>
+                    <td>
+                      {remain == null ? (
+                        <span className="muted">-</span>
+                      ) : (
+                        <b className={remain < 0 ? 'over' : remain <= 2 ? 'low' : ''}>{remain}일</b>
+                      )}
+                    </td>
+                    <td className="dates">
+                      {entries.length === 0
+                        ? <span className="muted">-</span>
+                        : entries.map((e) => `${Number(e.date.slice(5, 7))}/${Number(e.date.slice(8, 10))}${e.leaveDays === 0.5 ? '(반차)' : ''}`).join(', ')}
+                    </td>
+                  </tr>
+                );
+              })}
+              {data.teachers.filter((t) => !t.archived).length === 0 && (
+                <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-3)' }}>등록된 직원이 없습니다.</td></tr>
+              )}
+            </tbody>
+          </table>
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--text-3)' }}>
+            달력에서 [+ 근무·휴무]로 휴무를 등록할 때 '연차에서 차감'을 켜면 여기에 자동으로 집계됩니다.
+            총 연차는 [직원] 탭에서 입력합니다.
+          </p>
         </>
       )}
 

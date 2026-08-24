@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { AcademyEvent, Branch, DateStr, EventCategory } from '../types';
+import type { AcademyEvent, DateStr, EventCategory } from '../types';
 import { Modal } from './Modal';
 import { EVENT_CATEGORY_LABEL } from '../lib/schedule';
 import { newId } from '../lib/id';
@@ -8,16 +8,14 @@ interface EventFormProps {
   /** 수정이면 기존 값, 새로 만들면 undefined */
   initial?: AcademyEvent;
   defaultDate: DateStr;
-  branches: Branch[];
   onSave: (ev: AcademyEvent) => void;
   onDelete?: (id: string) => void;
   onClose: () => void;
 }
 
-export function EventForm({ initial, defaultDate, branches, onSave, onDelete, onClose }: EventFormProps) {
+export function EventForm({ initial, defaultDate, onSave, onDelete, onClose }: EventFormProps) {
   const [title, setTitle] = useState(initial?.title ?? '');
   const [category, setCategory] = useState<EventCategory>(initial?.category ?? 'etc');
-  const [branchIds, setBranchIds] = useState<string[]>(initial?.branchIds ?? []);
   const [startDate, setStartDate] = useState(initial?.startDate ?? defaultDate);
   const [endDate, setEndDate] = useState(initial?.endDate ?? defaultDate);
   const [allDay, setAllDay] = useState(initial?.allDay ?? true);
@@ -26,12 +24,6 @@ export function EventForm({ initial, defaultDate, branches, onSave, onDelete, on
   const [publicVisible, setPublicVisible] = useState(initial?.publicVisible !== false);
   const [memo, setMemo] = useState(initial?.memo ?? '');
   const [error, setError] = useState('');
-
-  function toggleBranch(id: string) {
-    setBranchIds((prev) =>
-      prev.includes(id) ? prev.filter((b) => b !== id) : [...prev, id],
-    );
-  }
 
   function submit() {
     if (!title.trim()) return setError('제목을 입력해 주세요.');
@@ -42,7 +34,7 @@ export function EventForm({ initial, defaultDate, branches, onSave, onDelete, on
       id: initial?.id ?? newId('e'),
       title: title.trim(),
       category,
-      branchIds,
+      branchIds: [],
       startDate,
       endDate,
       allDay,
@@ -85,7 +77,7 @@ export function EventForm({ initial, defaultDate, branches, onSave, onDelete, on
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="예: 전 지점 모의고사"
+          placeholder="예: 6월 모의고사"
           autoFocus
         />
       </div>
@@ -101,25 +93,9 @@ export function EventForm({ initial, defaultDate, branches, onSave, onDelete, on
       </div>
       {category === 'holiday' && (
         <div className="form-error" style={{ background: 'var(--today)', color: 'var(--warn)' }}>
-          휴원 일정은 해당 지점의 이 날짜 일정 위에 표시되어 휴원임을 알립니다.
+          휴원 일정을 등록하면 그 날짜 위에 빨간 띠로 표시됩니다.
         </div>
       )}
-      <div className="field">
-        <label>대상 지점 (아무것도 선택하지 않으면 전 지점 공통)</label>
-        <div className="check-row">
-          {branches.map((b) => (
-            <label key={b.id}>
-              <input
-                type="checkbox"
-                checked={branchIds.includes(b.id)}
-                onChange={() => toggleBranch(b.id)}
-              />
-              <span className="color-dot" style={{ background: b.color }} />
-              {b.name}
-            </label>
-          ))}
-        </div>
-      </div>
       <div className="field-row">
         <div className="field">
           <label>시작일</label>

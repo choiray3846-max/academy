@@ -160,7 +160,6 @@ export default function App() {
       data.consultations.find(
         (k) =>
           k.id !== candidate.id &&
-          k.branchId === candidate.branchId &&
           k.date === candidate.date &&
           k.status === 'booked' &&
           overlaps(k.startTime, k.endTime, candidate.startTime, candidate.endTime),
@@ -191,22 +190,10 @@ export default function App() {
     });
   }
 
-  function toggleBranch(id: string) {
-    setFilter((prev) => ({
-      ...prev,
-      branchIds: prev.branchIds.includes(id)
-        ? prev.branchIds.filter((b) => b !== id)
-        : [...prev.branchIds, id],
-    }));
-  }
-
-  const visibleBranches = data.branches.filter((b) => !b.archived);
   const roleTag =
-    session.role === 'manager'
-      ? data.branches.find((b) => b.id === session.branchId)?.name
-      : session.role === 'teacher'
-        ? data.teachers.find((t) => t.id === session.teacherId)?.name
-        : undefined;
+    session.role === 'teacher'
+      ? data.teachers.find((t) => t.id === session.teacherId)?.name
+      : undefined;
 
   return (
     <div className="app">
@@ -239,27 +226,6 @@ export default function App() {
           <button className={`chip${view === 'week' ? ' active' : ''}`} onClick={() => setView('week')}>주</button>
         </div>
         <div className="spacer" style={{ flex: 1 }} />
-        {/* 지점 필터: 매니저 모드는 자기 지점 고정이므로 숨긴다 */}
-        {session.role !== 'manager' && visibleBranches.length > 1 && (
-          <div className="check-row" style={{ gap: 4 }}>
-            <button
-              className={`chip${filter.branchIds.length === 0 ? ' active' : ''}`}
-              onClick={() => setFilter((prev) => ({ ...prev, branchIds: [] }))}
-            >
-              전 지점
-            </button>
-            {visibleBranches.map((b) => (
-              <button
-                key={b.id}
-                className={`chip${filter.branchIds.includes(b.id) ? ' active' : ''}`}
-                onClick={() => toggleBranch(b.id)}
-              >
-                <span className="dot" style={{ background: b.color }} />
-                {b.name}
-              </button>
-            ))}
-          </div>
-        )}
         {allowedKinds.length > 1 && (
           <div className="check-row" style={{ gap: 4 }}>
             {ACTIVE_KINDS.filter((k) => allowedKinds.includes(k)).map((k) => (
@@ -293,16 +259,7 @@ export default function App() {
                 : formatWeekTitle(startOfWeek(anchor, weekStartsOn))}
             </span>
             <span className="ph-legend">
-              {(filter.branchIds.length > 0
-                ? visibleBranches.filter((b) => filter.branchIds.includes(b.id))
-                : visibleBranches
-              ).map((b) => (
-                <span key={b.id}>
-                  <span className="dot" style={{ background: b.color }} />
-                  {b.name}
-                </span>
-              ))}
-              <span className="ph-note">빨강 = 휴원</span>
+              <span className="ph-note">빨강 = 휴원 · 주황 = 연차</span>
             </span>
           </div>
           {view === 'month' ? (
@@ -339,7 +296,6 @@ export default function App() {
       {modal.type === 'role' && (
         <RoleSwitcher
           session={session}
-          branches={data.branches}
           teachers={data.teachers}
           adminPin={data.settings.adminPin}
           onChange={setSession}
@@ -358,7 +314,6 @@ export default function App() {
         <EventForm
           initial={modal.initial}
           defaultDate={selectedDate}
-          branches={visibleBranches}
           onSave={saveEvent}
           onDelete={deleteEvent}
           onClose={() => setModal({ type: 'none' })}
@@ -369,7 +324,7 @@ export default function App() {
           initial={modal.initial}
           defaultDate={selectedDate}
           teachers={data.teachers}
-          branches={data.branches}
+          data={data}
           onSave={saveShift}
           onDelete={deleteShift}
           onClose={() => setModal({ type: 'none' })}
@@ -379,7 +334,7 @@ export default function App() {
         <ConsultForm
           initial={modal.initial}
           defaultDate={selectedDate}
-          branches={data.branches}
+          defaultBranchId={data.branches[0]?.id ?? 'b1'}
           teachers={data.teachers}
           findClash={findConsultClash}
           onSave={saveConsult}

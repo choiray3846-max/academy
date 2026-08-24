@@ -195,7 +195,19 @@ function expandShifts(data: AcademyData, from: DateStr, to: DateStr): Occurrence
     .map((s) => {
       const teacher = teacherById.get(s.teacherId);
       const subFor = s.subForTeacherId ? teacherById.get(s.subForTeacherId) : undefined;
-      const label = SHIFT_TYPE_LABEL[s.type];
+      // 연차 차감이 걸린 휴무는 '연차/반차'로 표시해 일반 휴무와 구분한다.
+      const label =
+        s.type === 'off' && s.leaveDays
+          ? s.leaveDays === 0.5
+            ? '반차'
+            : '연차'
+          : SHIFT_TYPE_LABEL[s.type];
+      const color =
+        s.type === 'off'
+          ? s.leaveDays
+            ? '#f08c00' // 연차·반차는 주황
+            : '#868e96' // 일반 휴무는 회색
+          : teacher?.color || KIND_FALLBACK_COLOR.shift;
       return {
         key: `shift:${s.id}`,
         kind: 'shift' as const,
@@ -204,11 +216,11 @@ function expandShifts(data: AcademyData, from: DateStr, to: DateStr): Occurrence
         allDay: !s.startTime,
         startTime: s.startTime,
         endTime: s.endTime,
-        title: `${teacher?.name ?? '알 수 없는 강사'} ${label}`,
+        title: `${teacher?.name ?? '알 수 없는 직원'} ${label}`,
         subtitle: subFor ? `${subFor.name} 대신` : s.memo,
         branchId: s.branchId,
         teacherId: s.teacherId,
-        color: s.type === 'off' ? '#868e96' : teacher?.color || KIND_FALLBACK_COLOR.shift,
+        color,
         publicVisible: false,
       };
     });
@@ -389,4 +401,29 @@ export function findConflicts(data: AcademyData, from: DateStr, to: DateStr): Co
     }
   }
   return conflicts.sort((x, y) => x.date.localeCompare(y.date));
+}
+
+/* ------------------------------------------------------------------ */
+/* 연차 계산                                                           */
+/* ------------------------------------------------------------------ */
+
+/** 해당 연도에 이 직원이 사용한 연차 일수 합계 (반차 0.5 포함) */
+export function leaveUsedInYear(data: AcademyData, teacherId: ID, year: number): number {
+  const prefix = `${year}-`;
+  let sum = 0;
+  for (const s of data.shifts) {
+    if (s.teacherId !== teacherId) continue;
+    if (s.type !== 'off' || !s.leaveDays) continue;
+    if (!s.date.startsWith(prefix)) continue;
+    sum += s.leaveDays;
+  }
+  return sum;
+}
+
+/** 해당 연도에 이 직원이 사용한 연차 내역 (날짜순) */
+export function leaveEntriesInYear(data: AcademyData, teacherId: ID, year: number) {
+  const prefix = `${year}-`;
+  return data.shifts
+    .filter((s) => s.teacherId === teacherId && s.type === 'off' && s.leaveDays && s.date.startsWith(prefix))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }

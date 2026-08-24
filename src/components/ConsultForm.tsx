@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Branch, Consultation, ConsultStatus, DateStr, Teacher } from '../types';
+import type { Consultation, ConsultStatus, DateStr, Teacher } from '../types';
 import { Modal } from './Modal';
 import { CONSULT_STATUS_LABEL } from '../lib/schedule';
 import { minutesToTime, timeToMinutes } from '../lib/date';
@@ -8,7 +8,8 @@ import { newId } from '../lib/id';
 interface ConsultFormProps {
   initial?: Consultation;
   defaultDate: DateStr;
-  branches: Branch[];
+  /** 단일 지점 운영: 레코드에 저장할 기본 지점 id */
+  defaultBranchId: string;
   teachers: Teacher[];
   /** 같은 지점·같은 시간대에 이미 잡힌 상담이 있는지 알려 주는 검사기 */
   findClash: (candidate: Consultation) => Consultation | null;
@@ -20,15 +21,14 @@ interface ConsultFormProps {
 export function ConsultForm({
   initial,
   defaultDate,
-  branches,
+  defaultBranchId,
   teachers,
   findClash,
   onSave,
   onDelete,
   onClose,
 }: ConsultFormProps) {
-  const activeBranches = branches.filter((b) => !b.archived);
-  const [branchId, setBranchId] = useState(initial?.branchId ?? activeBranches[0]?.id ?? '');
+  const branchId = initial?.branchId ?? defaultBranchId;
   const [date, setDate] = useState(initial?.date ?? defaultDate);
   const [startTime, setStartTime] = useState(initial?.startTime ?? '15:00');
   const [duration, setDuration] = useState(
@@ -43,7 +43,6 @@ export function ConsultForm({
   const [error, setError] = useState('');
 
   function submit() {
-    if (!branchId) return setError('지점을 선택해 주세요.');
     if (!studentName.trim()) return setError('학생 이름을 입력해 주세요.');
     if (!date || !startTime) return setError('날짜와 시각을 입력해 주세요.');
     const candidate: Consultation = {
@@ -97,14 +96,6 @@ export function ConsultForm({
     >
       {error && <div className="form-error">{error}</div>}
       <div className="field-row">
-        <div className="field">
-          <label>지점</label>
-          <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-            {activeBranches.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
-        </div>
         <div className="field">
           <label>상태</label>
           <select value={status} onChange={(e) => setStatus(e.target.value as ConsultStatus)}>
