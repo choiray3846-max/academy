@@ -150,6 +150,7 @@ export function ShiftForm({ initial, defaultDate, teachers, data, onSave, onDele
               <select value={leaveDays} onChange={(e) => setLeaveDays(Number(e.target.value))} style={{ width: 110 }}>
                 <option value={1}>1일 (연차)</option>
                 <option value={0.5}>0.5일 (반차)</option>
+                <option value={0.25}>0.25일 (반반차)</option>
               </select>
             )}
           </div>

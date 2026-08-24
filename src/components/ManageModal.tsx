@@ -154,7 +154,7 @@ export function ManageModal({ data, update, replaceAll, onClose }: ManageModalPr
                     type="number"
                     min={0}
                     max={40}
-                    step={0.5}
+                    step={0.25}
                     value={t.annualLeaveTotal ?? ''}
                     placeholder="-"
                     onChange={(e) =>
@@ -222,7 +222,7 @@ export function ManageModal({ data, update, replaceAll, onClose }: ManageModalPr
                     <td className="dates">
                       {entries.length === 0
                         ? <span className="muted">-</span>
-                        : entries.map((e) => `${Number(e.date.slice(5, 7))}/${Number(e.date.slice(8, 10))}${e.leaveDays === 0.5 ? '(반차)' : ''}`).join(', ')}
+                        : entries.map((e) => `${Number(e.date.slice(5, 7))}/${Number(e.date.slice(8, 10))}${e.leaveDays === 0.25 ? '(반반차)' : e.leaveDays === 0.5 ? '(반차)' : ''}`).join(', ')}
                     </td>
                   </tr>
                 );

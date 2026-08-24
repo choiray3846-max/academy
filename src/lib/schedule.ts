@@ -198,9 +198,11 @@ function expandShifts(data: AcademyData, from: DateStr, to: DateStr): Occurrence
       // 연차 차감이 걸린 휴무는 '연차/반차'로 표시해 일반 휴무와 구분한다.
       const label =
         s.type === 'off' && s.leaveDays
-          ? s.leaveDays === 0.5
-            ? '반차'
-            : '연차'
+          ? s.leaveDays === 0.25
+            ? '반반차'
+            : s.leaveDays === 0.5
+              ? '반차'
+              : '연차'
           : SHIFT_TYPE_LABEL[s.type];
       const color =
         s.type === 'off'
