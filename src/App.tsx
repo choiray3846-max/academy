@@ -284,6 +284,27 @@ export default function App() {
 
       <div className="main">
         <div className="calendar-wrap">
+          {/* 인쇄할 때만 보이는 머리글: 학원명 + 연·월 + 지점 색 범례 */}
+          <div className="print-header">
+            <span className="ph-academy">{data.settings.academyName}</span>
+            <span className="ph-month">
+              {view === 'month'
+                ? formatMonthTitle(anchor)
+                : formatWeekTitle(startOfWeek(anchor, weekStartsOn))}
+            </span>
+            <span className="ph-legend">
+              {(filter.branchIds.length > 0
+                ? visibleBranches.filter((b) => filter.branchIds.includes(b.id))
+                : visibleBranches
+              ).map((b) => (
+                <span key={b.id}>
+                  <span className="dot" style={{ background: b.color }} />
+                  {b.name}
+                </span>
+              ))}
+              <span className="ph-note">빨강 = 휴원</span>
+            </span>
+          </div>
           {view === 'month' ? (
             <MonthView
               anchor={anchor}
