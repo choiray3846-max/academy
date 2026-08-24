@@ -359,3 +359,18 @@ td.dup select { border-color: var(--danger); background: var(--danger-soft); }
 /* ----- 자동 배치 결과 ----- */
 .fill-list { margin: 4px 0 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; }
 .fill-list.muted { color: var(--text-3); }
+
+/* ----- 담당 강사 관계 ----- */
+.pref-list { display: flex; flex-direction: column; gap: 6px; }
+.pref-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+.pref-name { font-weight: 600; }
+.pref-name small { color: var(--text-3); font-weight: 400; }
+.pref-choices { display: flex; gap: 4px; }
+.chip.must.active { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }

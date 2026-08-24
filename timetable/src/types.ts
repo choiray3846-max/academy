@@ -28,6 +28,11 @@ export interface Student {
   weeklyCount?: number;
   /** 올 수 있는 시간대. '요일-교시' 키 목록 (예: '0-1' = 월 B교시) */
   availability?: string[];
+  /**
+   * 강사별 관계. 'must'(지정)가 하나라도 있으면 그 강사(들)에게만 배치되고,
+   * 'prefer'(선호)는 자동 배치에서 우선순위를 높인다.
+   */
+  teacherPrefs?: Record<ID, 'must' | 'prefer'>;
   memo?: string;
   archived?: boolean;
 }

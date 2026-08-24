@@ -121,6 +121,37 @@ export default function App() {
     }
   }
 
+  /** 지정 강사 위반: must 관계가 있는 학생이 다른 강사 그룹에 앉아 있는 경우 */
+  const prefViolations = useMemo(() => {
+    const out: { studentName: string; teacherName: string; dayIndex: number; blockIndex: number }[] = [];
+    const studentById = new Map(data.students.map((st) => [st.id, st]));
+    const teacherById = new Map(data.teachers.map((t) => [t.id, t]));
+    week.days.forEach((day, d) => {
+      day.blocks.forEach((block, b) => {
+        for (const group of block.groups) {
+          if (!group.teacherId) continue;
+          for (const seat of group.seats) {
+            if (!seat.studentId) continue;
+            const st = studentById.get(seat.studentId);
+            if (!st) continue;
+            const mustIds = Object.entries(st.teacherPrefs ?? {})
+              .filter(([, v]) => v === 'must')
+              .map(([id]) => id);
+            if (mustIds.length > 0 && !mustIds.includes(group.teacherId)) {
+              out.push({
+                studentName: st.name,
+                teacherName: teacherById.get(group.teacherId)?.name ?? '?',
+                dayIndex: d,
+                blockIndex: b,
+              });
+            }
+          }
+        }
+      });
+    });
+    return out;
+  }, [week, data.students, data.teachers]);
+
   const dayConflicts = conflicts.filter((c) => c.dayIndex === dayIndex);
   const times = dayIndex === 5 ? data.settings.saturdayTimes : data.settings.weekdayTimes;
 
@@ -165,6 +196,17 @@ export default function App() {
         <button className="danger-ghost" onClick={clearThisWeek}>판 비우기</button>
       </div>
 
+      {prefViolations.length > 0 && (
+        <div className="banner warn">
+          ⚠ 지정 강사 위반 {prefViolations.length}건:{' '}
+          {prefViolations
+            .map(
+              (v) =>
+                `${DAY_LABELS[v.dayIndex]} ${['A', 'B', 'C'][v.blockIndex]}교시 ${v.studentName} → ${v.teacherName} (지정 강사 아님)`,
+            )
+            .join(' / ')}
+        </div>
+      )}
       {conflicts.length > 0 && (
         <div className="banner warn">
           ⚠ 겹침 {conflicts.length}건:{' '}

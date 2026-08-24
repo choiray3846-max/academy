@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { Manager, Student, Teacher, TimetableData } from '../types';
 import { Modal } from './Modal';
 import { AvailabilityEditor } from './AvailabilityEditor';
+import { TeacherPrefEditor } from './TeacherPrefEditor';
 import { newId } from '../lib/id';
 import { exportToJson, importFromJson } from '../lib/storage';
 import { today } from '../lib/date';
@@ -21,6 +22,8 @@ export function RosterModal({ data, update, replaceAll, onClose }: RosterModalPr
   const [message, setMessage] = useState('');
   /** 가능 시간 편집 대상: 학생 또는 강사 */
   const [availTarget, setAvailTarget] = useState<{ kind: 'student' | 'teacher'; id: string } | null>(null);
+  /** 담당 강사 관계 편집 대상 학생 */
+  const [prefTarget, setPrefTarget] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   /* 명단에 있는 사람이 판에 배정돼 있는지 검사 */
@@ -193,6 +196,14 @@ export function RosterModal({ data, update, replaceAll, onClose }: RosterModalPr
                 <button onClick={() => setAvailTarget({ kind: 'student', id: s.id })}>
                   시간 {s.availability?.length ?? 0}칸
                 </button>
+                <button onClick={() => setPrefTarget(s.id)}>
+                  강사
+                  {Object.values(s.teacherPrefs ?? {}).some((v) => v === 'must')
+                    ? ' 지정'
+                    : Object.keys(s.teacherPrefs ?? {}).length
+                      ? ' 선호'
+                      : ''}
+                </button>
                 <div className="grow" />
                 <button onClick={() => patchStudent(s.id, { archived: !s.archived })}>
                   {s.archived ? '숨김 해제' : '숨김'}
@@ -340,6 +351,18 @@ export function RosterModal({ data, update, replaceAll, onClose }: RosterModalPr
           </div>
         </>
       )}
+      {prefTarget && (() => {
+        const student = data.students.find((x) => x.id === prefTarget);
+        if (!student) return null;
+        return (
+          <TeacherPrefEditor
+            student={student}
+            teachers={data.teachers}
+            onChange={(next) => patchStudent(prefTarget, { teacherPrefs: next })}
+            onClose={() => setPrefTarget(null)}
+          />
+        );
+      })()}
       {availTarget && (() => {
         const person =
           availTarget.kind === 'student'

@@ -60,9 +60,28 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
   );
 
   const subjectOf = (st: Student) => st.defaultSubject?.trim() ?? '';
-  const matches = (t: Teacher, subject: string) => {
+  const subjectMatches = (t: Teacher, subject: string) => {
     const ts = t.subject?.trim() ?? '';
     return ts === '' || subject === '' || ts === subject;
+  };
+  const mustIdsOf = (st: Student) =>
+    Object.entries(st.teacherPrefs ?? {})
+      .filter(([, level]) => level === 'must')
+      .map(([id]) => id);
+  /**
+   * 이 강사에게 이 학생을 붙여도 되는가.
+   * 지정 강사가 있으면 그 강사만 허용. 지정·선호 관계는 과목 검사를 건너뛴다
+   * (관계를 직접 지정했다면 과목 추론보다 우선한다).
+   */
+  const eligible = (t: Teacher, st: Student) => {
+    const must = mustIdsOf(st);
+    if (must.length > 0) return must.includes(t.id);
+    if (st.teacherPrefs?.[t.id]) return true;
+    return subjectMatches(t, subjectOf(st));
+  };
+  const prefBonus = (t: Teacher, st: Student) => {
+    const level = st.teacherPrefs?.[t.id];
+    return level === 'must' ? 4 : level === 'prefer' ? 3 : 0;
   };
 
   function studentInBlock(d: number, b: number, studentId: string): boolean {
@@ -86,7 +105,6 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
 
   /** 한 학생의 다음 세션을 놓을 최적 자리 찾기 */
   function findSlot(st: Student): Candidate | null {
-    const subject = subjectOf(st);
     let best: Candidate | null = null;
 
     for (const key of st.availability ?? []) {
@@ -97,30 +115,33 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
       const block = draft.days[d].blocks[b];
       const dayBonus = studentInDay(d, st.id) ? 1 : 0; // 같은 날 연속 수업 선호
 
-      // 1순위: 이미 열린 그룹(과목 맞는 강사)의 빈 좌석
+      // 1순위: 이미 열린 그룹(배치 가능한 강사)의 빈 좌석. 선호·지정 강사면 가산점.
       for (let g = 0; g < block.groups.length; g++) {
         const group = block.groups[g];
         if (!group.teacherId) continue;
         const teacher = teacherById.get(group.teacherId);
-        if (!teacher || !matches(teacher, subject)) continue;
+        if (!teacher || !eligible(teacher, st)) continue;
         if (!group.seats.some((s) => !s.studentId)) continue;
-        const score = 10 + dayBonus;
+        const score = 10 + dayBonus + prefBonus(teacher, st);
         if (!best || score > best.score) best = { d, b, groupIndex: g, score };
       }
 
-      // 2순위: 빈 그룹을 새로 열기 (가능한 강사가 있어야 함)
+      // 2순위: 빈 그룹을 새로 열기. 선호·지정 강사를 먼저 고른다.
       for (let g = 0; g < block.groups.length; g++) {
         const group = block.groups[g];
         if (group.teacherId) continue;
         if (!group.seats.some((s) => !s.studentId)) continue;
-        const teacher = activeTeachers.find(
-          (t) =>
-            matches(t, subject) &&
-            (t.availability ?? []).includes(slotKey(d, b)) &&
-            !teacherBusy(d, b, t.id),
-        );
+        const candidates = activeTeachers
+          .filter(
+            (t) =>
+              eligible(t, st) &&
+              (t.availability ?? []).includes(slotKey(d, b)) &&
+              !teacherBusy(d, b, t.id),
+          )
+          .sort((a, c) => prefBonus(c, st) - prefBonus(a, st));
+        const teacher = candidates[0];
         if (!teacher) continue;
-        const score = 5 + dayBonus;
+        const score = 5 + dayBonus + prefBonus(teacher, st);
         if (!best || score > best.score) best = { d, b, groupIndex: g, newTeacherId: teacher.id, score };
         break; // 빈 그룹은 어느 것이든 같으므로 첫 번째만 본다
       }
@@ -140,6 +161,11 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
       if (block.groups.some((g) => g.seats.some((s) => !s.studentId))) sawFreeSeat = true;
     }
     if (!sawFreeSeat) return '가능한 시간대의 좌석이 모두 찼습니다';
+    const must = mustIdsOf(st);
+    if (must.length > 0) {
+      const names = must.map((id) => teacherById.get(id)?.name ?? '?').join('·');
+      return `지정 강사(${names})를 가능한 시간대에 배정할 수 없습니다 (강사 가능 시간 확인)`;
+    }
     return subject
       ? `가능한 시간대에 ${subject} 강사를 배정할 수 없습니다 (강사 가능 시간 확인)`
       : '가능한 시간대에 배정할 강사가 없습니다 (강사 가능 시간 확인)';
