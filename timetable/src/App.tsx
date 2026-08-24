@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SeatAssign, TimetableData, WeekBoard } from './types';
-import { DAY_LABELS } from './types';
+import { DAY_LABELS, MAX_SESSIONS_PER_DAY } from './types';
 import { addDays, mondayOf, shortDate, today, weekTitle } from './lib/date';
 import { loadData, saveData } from './lib/storage';
 import {
@@ -152,6 +152,28 @@ export default function App() {
     return out;
   }, [week, data.students, data.teachers]);
 
+  /** 하루 최대 횟수 초과: 한 학생이 같은 날 3교시 이상 앉아 있는 경우 */
+  const dailyCapViolations = useMemo(() => {
+    const out: { studentName: string; dayIndex: number; count: number }[] = [];
+    const studentById = new Map(data.students.map((st) => [st.id, st]));
+    week.days.forEach((day, d) => {
+      const perStudent = new Map<string, number>();
+      for (const block of day.blocks) {
+        for (const group of block.groups) {
+          for (const seat of group.seats) {
+            if (seat.studentId) perStudent.set(seat.studentId, (perStudent.get(seat.studentId) ?? 0) + 1);
+          }
+        }
+      }
+      for (const [id, count] of perStudent) {
+        if (count > MAX_SESSIONS_PER_DAY) {
+          out.push({ studentName: studentById.get(id)?.name ?? '?', dayIndex: d, count });
+        }
+      }
+    });
+    return out;
+  }, [week, data.students]);
+
   const dayConflicts = conflicts.filter((c) => c.dayIndex === dayIndex);
   const times = dayIndex === 5 ? data.settings.saturdayTimes : data.settings.weekdayTimes;
 
@@ -196,6 +218,14 @@ export default function App() {
         <button className="danger-ghost" onClick={clearThisWeek}>판 비우기</button>
       </div>
 
+      {dailyCapViolations.length > 0 && (
+        <div className="banner warn">
+          ⚠ 하루 최대 {MAX_SESSIONS_PER_DAY}회 초과:{' '}
+          {dailyCapViolations
+            .map((v) => `${DAY_LABELS[v.dayIndex]} ${v.studentName} ${v.count}회`)
+            .join(' / ')}
+        </div>
+      )}
       {prefViolations.length > 0 && (
         <div className="banner warn">
           ⚠ 지정 강사 위반 {prefViolations.length}건:{' '}

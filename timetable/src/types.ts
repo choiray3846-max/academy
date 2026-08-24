@@ -17,6 +17,9 @@ export const SEATS_PER_GROUP = 3;
 export const GROUPS_PER_BLOCK = SEATS_PER_BLOCK / SEATS_PER_GROUP; // 4
 
 export const BLOCK_NAMES = ['A', 'B', 'C'] as const;
+
+/** 학생 한 명이 하루에 들을 수 있는 최대 수업(교시) 수 */
+export const MAX_SESSIONS_PER_DAY = 2;
 export const DAY_LABELS = ['월', '화', '수', '목', '금', '토'] as const;
 
 export interface Student {
@@ -40,10 +43,19 @@ export interface Student {
 export interface Teacher {
   id: ID;
   name: string;
+  /** 담당 과목. 쉼표로 여러 개 적을 수 있다 (예: '수학, 물리') */
   subject?: string;
   /** 근무 가능한 시간대. '요일-교시' 키 목록 */
   availability?: string[];
   archived?: boolean;
+}
+
+/** 강사 과목 문자열을 과목 목록으로 (쉼표·가운뎃점·빗금 구분) */
+export function teacherSubjects(t: Teacher): string[] {
+  return (t.subject ?? '')
+    .split(/[,·/]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
 }
 
 /** '요일-교시' 슬롯 키 */

@@ -233,9 +233,9 @@ export function RosterModal({ data, update, replaceAll, onClose }: RosterModalPr
                 />
                 <input
                   value={t.subject ?? ''}
-                  placeholder="과목"
+                  placeholder="과목 (쉼표로 여러 개)"
                   onChange={(e) => patchTeacher(t.id, { subject: e.target.value })}
-                  style={{ width: 80 }}
+                  style={{ width: 140 }}
                 />
                 <button onClick={() => setAvailTarget({ kind: 'teacher', id: t.id })}>
                   시간 {t.availability?.length ?? 0}칸
@@ -250,6 +250,10 @@ export function RosterModal({ data, update, replaceAll, onClose }: RosterModalPr
             {data.teachers.length === 0 && <div className="empty-note">아직 강사가 없습니다.</div>}
           </div>
           <button className="primary" onClick={addTeacher}>+ 강사 추가</button>
+          <p className="hint">
+            과목은 쉼표로 여러 개 적을 수 있습니다 (예: '수학, 물리').
+            자동 배치는 그중 하나라도 학생 과목과 맞으면 배치합니다.
+          </p>
         </>
       )}
 

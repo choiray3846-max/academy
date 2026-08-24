@@ -4,7 +4,9 @@ import {
   DAYS_PER_WEEK,
   DAY_LABELS,
   BLOCK_NAMES,
+  MAX_SESSIONS_PER_DAY,
   slotKey,
+  teacherSubjects,
 } from '../types';
 import { studentWeekCounts } from './board';
 
@@ -61,8 +63,8 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
 
   const subjectOf = (st: Student) => st.defaultSubject?.trim() ?? '';
   const subjectMatches = (t: Teacher, subject: string) => {
-    const ts = t.subject?.trim() ?? '';
-    return ts === '' || subject === '' || ts === subject;
+    const list = teacherSubjects(t);
+    return list.length === 0 || subject === '' || list.includes(subject);
   };
   const mustIdsOf = (st: Student) =>
     Object.entries(st.teacherPrefs ?? {})
@@ -87,8 +89,9 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
   function studentInBlock(d: number, b: number, studentId: string): boolean {
     return draft.days[d].blocks[b].groups.some((g) => g.seats.some((s) => s.studentId === studentId));
   }
-  function studentInDay(d: number, studentId: string): boolean {
-    return draft.days[d].blocks.some((_, b) => studentInBlock(d, b, studentId));
+  /** 그 날 이 학생이 이미 앉아 있는 교시 수 */
+  function studentDayCount(d: number, studentId: string): number {
+    return draft.days[d].blocks.filter((_, b) => studentInBlock(d, b, studentId)).length;
   }
   function teacherBusy(d: number, b: number, teacherId: string): boolean {
     return draft.days[d].blocks[b].groups.some((g) => g.teacherId === teacherId);
@@ -111,9 +114,11 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
       const [d, b] = key.split('-').map(Number);
       if (!(d >= 0 && d < DAYS_PER_WEEK && b >= 0 && b < BLOCKS_PER_DAY)) continue;
       if (studentInBlock(d, b, st.id)) continue;
+      const dayCount = studentDayCount(d, st.id);
+      if (dayCount >= MAX_SESSIONS_PER_DAY) continue; // 하루 최대 횟수 제한
 
       const block = draft.days[d].blocks[b];
-      const dayBonus = studentInDay(d, st.id) ? 1 : 0; // 같은 날 연속 수업 선호
+      const dayBonus = dayCount === 1 ? 1 : 0; // 같은 날 두 번째 수업(연속) 선호
 
       // 1순위: 이미 열린 그룹(배치 가능한 강사)의 빈 좌석. 선호·지정 강사면 가산점.
       for (let g = 0; g < block.groups.length; g++) {
@@ -153,13 +158,16 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
   function diagnose(st: Student): string {
     const subject = subjectOf(st);
     let sawFreeSeat = false;
+    let allCapped = true;
     for (const key of st.availability ?? []) {
       const [d, b] = key.split('-').map(Number);
       if (!(d >= 0 && d < DAYS_PER_WEEK && b >= 0 && b < BLOCKS_PER_DAY)) continue;
       if (studentInBlock(d, b, st.id)) continue;
+      if (studentDayCount(d, st.id) < MAX_SESSIONS_PER_DAY) allCapped = false;
       const block = draft.days[d].blocks[b];
       if (block.groups.some((g) => g.seats.some((s) => !s.studentId))) sawFreeSeat = true;
     }
+    if (allCapped) return `하루 최대 ${MAX_SESSIONS_PER_DAY}회 제한 때문에 남는 시간대가 없습니다 (가능 요일을 늘려 주세요)`;
     if (!sawFreeSeat) return '가능한 시간대의 좌석이 모두 찼습니다';
     const must = mustIdsOf(st);
     if (must.length > 0) {
