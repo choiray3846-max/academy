@@ -24,8 +24,10 @@ export interface Student {
   name: string;
   grade: string;          // 예: '중3', '고1'
   defaultSubject?: string; // 배정할 때 기본으로 채울 과목
-  /** 주당 등록 회차 (회차제 관리용). 없으면 집계만 표시 */
+  /** 주당 등록 회차 (회차제 관리·자동 배치용). 없으면 집계만 표시 */
   weeklyCount?: number;
+  /** 올 수 있는 시간대. '요일-교시' 키 목록 (예: '0-1' = 월 B교시) */
+  availability?: string[];
   memo?: string;
   archived?: boolean;
 }
@@ -34,7 +36,14 @@ export interface Teacher {
   id: ID;
   name: string;
   subject?: string;
+  /** 근무 가능한 시간대. '요일-교시' 키 목록 */
+  availability?: string[];
   archived?: boolean;
+}
+
+/** '요일-교시' 슬롯 키 */
+export function slotKey(dayIndex: number, blockIndex: number): string {
+  return `${dayIndex}-${blockIndex}`;
 }
 
 /** 관리 담당(M열) */

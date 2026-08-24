@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Manager, Student, Teacher, TimetableData } from '../types';
 import { Modal } from './Modal';
+import { AvailabilityEditor } from './AvailabilityEditor';
 import { newId } from '../lib/id';
 import { exportToJson, importFromJson } from '../lib/storage';
 import { today } from '../lib/date';
@@ -18,6 +19,8 @@ interface RosterModalProps {
 export function RosterModal({ data, update, replaceAll, onClose }: RosterModalProps) {
   const [tab, setTab] = useState<Tab>('students');
   const [message, setMessage] = useState('');
+  /** 가능 시간 편집 대상: 학생 또는 강사 */
+  const [availTarget, setAvailTarget] = useState<{ kind: 'student' | 'teacher'; id: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   /* 명단에 있는 사람이 판에 배정돼 있는지 검사 */
@@ -187,6 +190,9 @@ export function RosterModal({ data, update, replaceAll, onClose }: RosterModalPr
                   />
                   회
                 </label>
+                <button onClick={() => setAvailTarget({ kind: 'student', id: s.id })}>
+                  시간 {s.availability?.length ?? 0}칸
+                </button>
                 <div className="grow" />
                 <button onClick={() => patchStudent(s.id, { archived: !s.archived })}>
                   {s.archived ? '숨김 해제' : '숨김'}
@@ -197,7 +203,10 @@ export function RosterModal({ data, update, replaceAll, onClose }: RosterModalPr
             {data.students.length === 0 && <div className="empty-note">아직 학생이 없습니다.</div>}
           </div>
           <button className="primary" onClick={addStudent}>+ 학생 추가</button>
-          <p className="hint">'주 n회'는 등록 회차입니다. 입력해 두면 배정 현황에서 채웠는지 한눈에 보입니다.</p>
+          <p className="hint">
+            '주 n회'는 등록 회차, '시간'은 올 수 있는 시간대입니다.
+            둘 다 입력된 학생만 자동 배치 대상이 됩니다.
+          </p>
         </>
       )}
 
@@ -217,6 +226,9 @@ export function RosterModal({ data, update, replaceAll, onClose }: RosterModalPr
                   onChange={(e) => patchTeacher(t.id, { subject: e.target.value })}
                   style={{ width: 80 }}
                 />
+                <button onClick={() => setAvailTarget({ kind: 'teacher', id: t.id })}>
+                  시간 {t.availability?.length ?? 0}칸
+                </button>
                 <div className="grow" />
                 <button onClick={() => patchTeacher(t.id, { archived: !t.archived })}>
                   {t.archived ? '숨김 해제' : '숨김'}
@@ -328,6 +340,27 @@ export function RosterModal({ data, update, replaceAll, onClose }: RosterModalPr
           </div>
         </>
       )}
+      {availTarget && (() => {
+        const person =
+          availTarget.kind === 'student'
+            ? data.students.find((x) => x.id === availTarget.id)
+            : data.teachers.find((x) => x.id === availTarget.id);
+        if (!person) return null;
+        return (
+          <AvailabilityEditor
+            title={`${person.name} ${availTarget.kind === 'student' ? '가능 시간' : '근무 가능 시간'}`}
+            value={person.availability ?? []}
+            weekdayTimes={data.settings.weekdayTimes}
+            saturdayTimes={data.settings.saturdayTimes}
+            onChange={(next) =>
+              availTarget.kind === 'student'
+                ? patchStudent(availTarget.id, { availability: next })
+                : patchTeacher(availTarget.id, { availability: next })
+            }
+            onClose={() => setAvailTarget(null)}
+          />
+        );
+      })()}
     </Modal>
   );
 }

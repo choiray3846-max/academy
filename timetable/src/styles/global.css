@@ -338,3 +338,24 @@ td.dup select { border-color: var(--danger); background: var(--danger-soft); }
   .wp-day tbody td { height: 13px; }
   .wp-name { min-width: auto; }
 }
+
+/* ----- 가능 시간 체크판 ----- */
+.avail-table { border-collapse: collapse; margin: 0 auto; }
+.avail-table th { font-size: 12px; color: var(--text-2); padding: 4px 6px; }
+.avail-table td { padding: 3px; }
+.avail-block { text-align: right; }
+.avail-block small { display: block; font-weight: 400; color: var(--text-3); font-size: 10px; }
+.avail-table .mini { padding: 3px 10px; font-size: 12px; }
+
+.avail-cell {
+  width: 44px;
+  height: 34px;
+  border-radius: 7px;
+  font-size: 14px;
+  color: var(--accent);
+}
+.avail-cell.on { background: var(--accent-soft); border-color: var(--accent); font-weight: 700; }
+
+/* ----- 자동 배치 결과 ----- */
+.fill-list { margin: 4px 0 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; }
+.fill-list.muted { color: var(--text-3); }

@@ -10,6 +10,8 @@ import {
   studentWeekCounts,
   weekOf,
 } from './lib/board';
+import { autoFill, type FillResult } from './lib/autofill';
+import { Modal } from './components/Modal';
 import { DayGrid } from './components/DayGrid';
 import { WeekPrint } from './components/WeekPrint';
 import { RosterModal } from './components/RosterModal';
@@ -25,6 +27,7 @@ export default function App() {
   });
   const [view, setView] = useState<View>('edit');
   const [rosterOpen, setRosterOpen] = useState(false);
+  const [fillResult, setFillResult] = useState<FillResult | null>(null);
   const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
@@ -97,6 +100,21 @@ export default function App() {
     }));
   }
 
+  function runAutoFill() {
+    const targets = data.students.filter(
+      (s) => !s.archived && (s.weeklyCount ?? 0) > 0 && (s.availability?.length ?? 0) > 0,
+    );
+    if (targets.length === 0) {
+      window.alert(
+        '자동 배치할 학생이 없습니다.\n[명단·설정 → 학생]에서 주 회차와 가능 시간을 입력해 주세요.\n강사도 [시간] 버튼으로 근무 가능 시간을 입력해야 합니다.',
+      );
+      return;
+    }
+    const result = autoFill(data, week);
+    update((prev) => ({ ...prev, weeks: { ...prev.weeks, [weekStart]: result.week } }));
+    setFillResult(result);
+  }
+
   function clearThisWeek() {
     if (window.confirm('이번 주 판을 전부 비울까요?')) {
       update((prev) => ({ ...prev, weeks: { ...prev.weeks, [weekStart]: emptyWeek(weekStart) } }));
@@ -142,6 +160,7 @@ export default function App() {
           <button className={`chip${view === 'week' ? ' active' : ''}`} onClick={() => setView('week')}>주간 전체</button>
         </div>
         <div className="spacer" />
+        <button className="primary" onClick={runAutoFill}>자동 배치</button>
         <button onClick={copyPreviousWeek}>지난주 복사</button>
         <button className="danger-ghost" onClick={clearThisWeek}>판 비우기</button>
       </div>
@@ -247,6 +266,44 @@ export default function App() {
         />
       </div>
 
+      {fillResult && (
+        <Modal
+          title="자동 배치 결과"
+          onClose={() => setFillResult(null)}
+          footer={<button className="primary" onClick={() => setFillResult(null)}>확인</button>}
+        >
+          <p style={{ margin: 0 }}>
+            새로 배치한 세션: <b>{fillResult.placed}건</b>
+            {fillResult.unplaced.length === 0 && fillResult.placed > 0 && ' — 모든 학생의 회차를 채웠습니다. ✓'}
+          </p>
+          {fillResult.unplaced.length > 0 && (
+            <>
+              <h4 style={{ margin: '6px 0 0' }}>회차를 못 채운 학생</h4>
+              <ul className="fill-list">
+                {fillResult.unplaced.map(({ student, missing, reason }) => (
+                  <li key={student.id}>
+                    <b>{student.name}</b> ({student.grade}) — {missing}회 부족 · {reason}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {fillResult.skipped.length > 0 && (
+            <>
+              <h4 style={{ margin: '6px 0 0' }}>자동 배치에서 빠진 학생</h4>
+              <ul className="fill-list muted">
+                {fillResult.skipped.map(({ student, reason }) => (
+                  <li key={student.id}>{student.name} — {reason}</li>
+                ))}
+              </ul>
+            </>
+          )}
+          <p className="hint">
+            결과가 마음에 안 들면 자리를 직접 고치면 됩니다. 이미 배치된 내용은 자동 배치가 건드리지 않으니,
+            중요한 자리는 먼저 손으로 놓고 [자동 배치]로 나머지를 채우는 방식도 좋습니다.
+          </p>
+        </Modal>
+      )}
       {rosterOpen && (
         <RosterModal
           data={data}
