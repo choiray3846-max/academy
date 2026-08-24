@@ -1,0 +1,790 @@
+/* ------------------------------------------------------------------ */
+/* 학원 지점 달력 – 전역 스타일                                        */
+/* ------------------------------------------------------------------ */
+
+:root {
+  color-scheme: light dark;
+
+  /* 라이트 팔레트 */
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f5;
+  --border: #dee2e6;
+  --border-strong: #ced4da;
+  --text: #212529;
+  --text-2: #495057;
+  --text-3: #868e96;
+  --accent: #2f6fed;
+  --accent-soft: #e7f0ff;
+  --danger: #e03131;
+  --danger-soft: #fff0f0;
+  --warn: #e8590c;
+  --today: #fff9db;
+  --sun: #e03131;
+  --sat: #1c7ed6;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+  --radius: 10px;
+  --radius-sm: 6px;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #15171b;
+  --surface: #1e2126;
+  --surface-2: #262a30;
+  --border: #343a40;
+  --border-strong: #495057;
+  --text: #f1f3f5;
+  --text-2: #ced4da;
+  --text-3: #868e96;
+  --accent: #5c8dff;
+  --accent-soft: #22314f;
+  --danger: #ff6b6b;
+  --danger-soft: #3b2325;
+  --warn: #ffa94d;
+  --today: #33301c;
+  --sun: #ff8787;
+  --sat: #74c0fc;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family:
+    'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+    'Apple SD Gothic Neo', 'Malgun Gothic', '맑은 고딕', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--surface-2);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.primary:hover {
+  filter: brightness(1.08);
+}
+
+button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: transparent;
+}
+
+button.danger:hover {
+  background: var(--danger-soft);
+}
+
+button.ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+button.ghost:hover {
+  background: var(--surface-2);
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------------ */
+/* 레이아웃                                                            */
+/* ------------------------------------------------------------------ */
+
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.topbar h1 {
+  font-size: 17px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.topbar .spacer {
+  flex: 1;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.toolbar .month-title {
+  font-size: 18px;
+  font-weight: 700;
+  min-width: 150px;
+  text-align: center;
+}
+
+.main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.calendar-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px 16px;
+}
+
+/* ------------------------------------------------------------------ */
+/* 필터 바                                                             */
+/* ------------------------------------------------------------------ */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: var(--surface);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  background: var(--surface-2);
+}
+
+.chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.chip .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* 월간 달력                                                           */
+/* ------------------------------------------------------------------ */
+
+.month-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--border);
+  gap: 1px;
+}
+
+.month-grid .weekday-head {
+  background: var(--surface-2);
+  text-align: center;
+  padding: 6px 0;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.day-cell {
+  background: var(--surface);
+  min-height: 0;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  overflow: hidden;
+  text-align: left;
+  border: none;
+  border-radius: 0;
+}
+
+.day-cell:hover {
+  background: var(--surface-2);
+}
+
+.day-cell.other-month {
+  opacity: 0.45;
+}
+
+.day-cell.today {
+  background: var(--today);
+}
+
+.day-cell .day-head {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.day-cell .day-num {
+  font-weight: 700;
+}
+
+.day-cell .day-num.sun { color: var(--sun); }
+.day-cell .day-num.sat { color: var(--sat); }
+
+.day-cell .holiday-name {
+  color: var(--sun);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.day-cell .more {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  padding: 1px 5px;
+  border-radius: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #fff;
+}
+
+.pill .pill-time {
+  font-weight: 600;
+  opacity: 0.9;
+  flex: none;
+}
+
+.pill .pill-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pill.canceled {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+.pill.outline {
+  color: var(--text);
+  background: transparent !important;
+  border: 1px solid var(--border-strong);
+}
+
+/* ------------------------------------------------------------------ */
+/* 주간 뷰                                                             */
+/* ------------------------------------------------------------------ */
+
+.week-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.week-head {
+  display: grid;
+  grid-template-columns: 56px repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.week-head .cell {
+  padding: 6px 4px;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-left: 1px solid var(--border);
+  cursor: pointer;
+  background: transparent;
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 0;
+}
+
+.week-head .cell:hover { background: var(--surface); }
+
+.week-head .cell.today {
+  color: var(--accent);
+}
+
+.week-allday {
+  display: grid;
+  grid-template-columns: 56px repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+  min-height: 28px;
+}
+
+.week-allday .label {
+  font-size: 11px;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.week-allday .cell {
+  border-left: 1px solid var(--border);
+  padding: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.week-body {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+}
+
+.week-grid {
+  display: grid;
+  grid-template-columns: 56px repeat(7, 1fr);
+  position: relative;
+}
+
+.time-col .slot {
+  height: 48px;
+  font-size: 11px;
+  color: var(--text-3);
+  text-align: right;
+  padding-right: 6px;
+  transform: translateY(-7px);
+}
+
+.day-col {
+  border-left: 1px solid var(--border);
+  position: relative;
+}
+
+.day-col .hour-line {
+  height: 48px;
+  border-bottom: 1px solid var(--border);
+}
+
+.day-col.today {
+  background: var(--today);
+}
+
+.week-event {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 11.5px;
+  line-height: 1.3;
+  padding: 3px 5px;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  border: none;
+  text-align: left;
+}
+
+.week-event .we-time {
+  font-weight: 700;
+  font-size: 10.5px;
+  opacity: 0.9;
+}
+
+.week-event.canceled {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+/* ------------------------------------------------------------------ */
+/* 일간(하루) 패널                                                     */
+/* ------------------------------------------------------------------ */
+
+.day-panel {
+  width: 320px;
+  flex: none;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.day-panel header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.day-panel header h2 {
+  font-size: 15px;
+  margin: 0;
+  flex: 1;
+}
+
+.day-panel .list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.occ-card {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  cursor: pointer;
+  background: var(--surface);
+  text-align: left;
+  display: block;
+  width: 100%;
+}
+
+.occ-card:hover {
+  background: var(--surface-2);
+}
+
+.occ-card .occ-top {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.occ-card .occ-title {
+  font-weight: 600;
+  margin-top: 1px;
+}
+
+.occ-card .occ-sub {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.occ-card.canceled .occ-title {
+  text-decoration: line-through;
+  color: var(--text-3);
+}
+
+.badge {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 0 5px;
+  color: #fff;
+}
+
+.day-panel .empty {
+  color: var(--text-3);
+  text-align: center;
+  padding: 32px 0;
+}
+
+.day-panel footer {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ------------------------------------------------------------------ */
+/* 모달                                                                */
+/* ------------------------------------------------------------------ */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 20px;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  width: 480px;
+  max-width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal.wide { width: 720px; }
+
+.modal header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+}
+
+.modal header h2 {
+  margin: 0;
+  font-size: 16px;
+  flex: 1;
+}
+
+.modal .modal-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal footer {
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field > label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.field-row {
+  display: flex;
+  gap: 10px;
+}
+
+.field-row .field {
+  flex: 1;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.check-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.form-error {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+/* ------------------------------------------------------------------ */
+/* 관리 화면 (지점/강사 등)                                            */
+/* ------------------------------------------------------------------ */
+
+.manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.manage-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+
+.manage-item .grow { flex: 1; min-width: 0; }
+
+.manage-item .name { font-weight: 600; }
+
+.manage-item .meta {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.color-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 18px;
+}
+
+.tabs button {
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  padding: 10px 14px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-2);
+}
+
+.tabs button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------ */
+/* 알림 배너                                                           */
+/* ------------------------------------------------------------------ */
+
+.banner {
+  padding: 8px 16px;
+  font-size: 13px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.banner.error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.banner.warn {
+  background: var(--today);
+  color: var(--warn);
+}
+
+/* ------------------------------------------------------------------ */
+/* 역할 배지, 반응형                                                   */
+/* ------------------------------------------------------------------ */
+
+.role-badge {
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .main { flex-direction: column; }
+  .day-panel {
+    width: auto;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    max-height: 45vh;
+  }
+  .day-cell .pill .pill-time { display: none; }
+}
+
+@media (max-width: 600px) {
+  .toolbar .month-title { min-width: 0; font-size: 15px; }
+  .topbar h1 { font-size: 15px; }
+  .pill { font-size: 10px; }
+}
+
+@media print {
+  .topbar, .toolbar, .day-panel, .banner { display: none !important; }
+  .calendar-wrap { padding: 0; }
+  .month-grid { border-radius: 0; }
+}
