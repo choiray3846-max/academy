@@ -197,6 +197,9 @@ export default function App() {
       <div className="topbar">
         <h1>{data.settings.academyName} 시간표</h1>
         <div className="spacer" />
+        {import.meta.env.PROD && (
+          <a className="app-link" href="../">달력 열기 ↗</a>
+        )}
         <button onClick={() => setRosterOpen(true)}>명단·설정</button>
         <button onClick={() => window.print()}>인쇄</button>
       </div>

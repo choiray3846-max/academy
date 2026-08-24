@@ -374,3 +374,14 @@ td.dup select { border-color: var(--danger); background: var(--danger-soft); }
 .pref-name small { color: var(--text-3); font-weight: 400; }
 .pref-choices { display: flex; gap: 4px; }
 .chip.must.active { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+
+/* 배포 사이트에서 달력↔시간표 이동 링크 */
+.app-link {
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.app-link:hover { border-color: var(--accent); }

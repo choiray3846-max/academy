@@ -208,6 +208,9 @@ export default function App() {
           {roleTag ? ` · ${roleTag}` : ''}
         </button>
         <div className="spacer" />
+        {import.meta.env.PROD && (
+          <a className="app-link" href="./timetable/">시간표 열기 ↗</a>
+        )}
         {canManageMasterData(session.role) && (
           <button onClick={() => setModal({ type: 'manage' })}>학원 관리</button>
         )}

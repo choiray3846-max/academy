@@ -1,0 +1,65 @@
+# 달력(루트)과 시간표(/timetable)를 빌드해서 GitHub Pages로 배포한다.
+# 푸시할 때마다 자동 실행되며, 배포 주소는
+#   달력:   https://choiray3846-max.github.io/academy/
+#   시간표: https://choiray3846-max.github.io/academy/timetable/
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [claude/academy-branch-calendar-1kcfl0]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build calendar
+        run: |
+          npm ci
+          npm run build -- --base=/academy/
+
+      - name: Build timetable
+        working-directory: timetable
+        run: |
+          npm ci
+          npm run build -- --base=/academy/timetable/
+
+      - name: Assemble site
+        run: |
+          mkdir -p site/timetable
+          cp -r dist/* site/
+          cp -r timetable/dist/* site/timetable/
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
