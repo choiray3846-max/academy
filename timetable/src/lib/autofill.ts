@@ -81,10 +81,33 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
     if (st.teacherPrefs?.[t.id]) return true;
     return subjectMatches(t, subjectOf(st));
   };
+  /**
+   * 점수 가중치 설계 (큰 것이 우선):
+   * - 지정/선호 강사: 30/20 — 다른 모든 선호보다 우선
+   * - 퍼뜨리기: 0~12 — 기존 수업일에서 먼 날일수록 높음
+   * - 배치 형태: 열린 그룹 10 / 새 그룹 5
+   */
   const prefBonus = (t: Teacher, st: Student) => {
     const level = st.teacherPrefs?.[t.id];
-    return level === 'must' ? 4 : level === 'prefer' ? 3 : 0;
+    return level === 'must' ? 30 : level === 'prefer' ? 20 : 0;
   };
+
+  /**
+   * 수업일 퍼뜨리기 점수.
+   * 주 3회면 월화수보다 월수금처럼 벌어지도록, 이미 수업이 있는 날과의
+   * 최소 간격이 클수록 높은 점수를 준다. 같은 날 두 번째 교시는 0점이라
+   * 다른 날이 모두 막혔을 때만 쓰인다.
+   */
+  function spreadScore(d: number, studentId: string): number {
+    const days: number[] = [];
+    for (let dd = 0; dd < DAYS_PER_WEEK; dd++) {
+      if (studentDayCount(dd, studentId) > 0) days.push(dd);
+    }
+    if (days.includes(d)) return 0;
+    if (days.length === 0) return 3 * 4;
+    const minDist = Math.min(...days.map((dd) => Math.abs(dd - d)));
+    return Math.min(3, minDist) * 4;
+  }
 
   function studentInBlock(d: number, b: number, studentId: string): boolean {
     return draft.days[d].blocks[b].groups.some((g) => g.seats.some((s) => s.studentId === studentId));
@@ -114,11 +137,10 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
       const [d, b] = key.split('-').map(Number);
       if (!(d >= 0 && d < DAYS_PER_WEEK && b >= 0 && b < BLOCKS_PER_DAY)) continue;
       if (studentInBlock(d, b, st.id)) continue;
-      const dayCount = studentDayCount(d, st.id);
-      if (dayCount >= MAX_SESSIONS_PER_DAY) continue; // 하루 최대 횟수 제한
+      if (studentDayCount(d, st.id) >= MAX_SESSIONS_PER_DAY) continue; // 하루 최대 횟수 제한
 
       const block = draft.days[d].blocks[b];
-      const dayBonus = dayCount === 1 ? 1 : 0; // 같은 날 두 번째 수업(연속) 선호
+      const dayBonus = spreadScore(d, st.id);
 
       // 1순위: 이미 열린 그룹(배치 가능한 강사)의 빈 좌석. 선호·지정 강사면 가산점.
       for (let g = 0; g < block.groups.length; g++) {
