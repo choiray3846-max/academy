@@ -77,7 +77,10 @@ export function MonthView({
                 }}
               >
                 {!occ.allDay && occ.startTime && (
-                  <span className="pill-time">{occ.startTime}</span>
+                  <span className="pill-time">
+                    {occ.startTime}
+                    {occ.endTime ? `~${occ.endTime}` : ''}
+                  </span>
                 )}
                 <span className="pill-title">{occ.title}</span>
               </span>
