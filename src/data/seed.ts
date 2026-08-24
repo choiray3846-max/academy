@@ -1,4 +1,4 @@
-import type { AcademyData } from '../types';
+import type { AcademyData, EventTemplate } from '../types';
 import { addDays, startOfMonth, today } from '../lib/date';
 
 /**
@@ -7,6 +7,14 @@ import { addDays, startOfMonth, today } from '../lib/date';
  * 날짜는 '오늘'을 기준으로 만들어져서 언제 열어도 이번 달에 일정이 보인다.
  * 실제로 쓸 때는 [설정 → 전체 초기화]로 지우고 우리 학원 정보를 넣으면 된다.
  */
+/** 처음 시작할 때 넣어 주는 자주 쓰는 일정 틀 */
+export function defaultEventTemplates(): EventTemplate[] {
+  return [
+    { id: 'tp1', title: '지점휴무', category: 'holiday', allDay: true },
+    { id: 'tp2', title: '학습실 오픈', category: 'etc', allDay: false, startTime: '11:00', endTime: '19:00' },
+  ];
+}
+
 export function createSeedData(): AcademyData {
   const t = today();
   const monthStart = startOfMonth(t);
@@ -116,6 +124,7 @@ export function createSeedData(): AcademyData {
         memo: '고3 개별 질의응답',
       },
     ],
+    eventTemplates: defaultEventTemplates(),
     consultations: [
       {
         id: 'k1',
@@ -168,6 +177,7 @@ export function createEmptyData(): AcademyData {
     teachers: [],
     classes: [],
     events: [],
+    eventTemplates: defaultEventTemplates(),
     shifts: [],
     consultations: [],
   };

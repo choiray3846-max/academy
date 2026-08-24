@@ -1,5 +1,5 @@
 import type { AcademyData, Session } from '../types';
-import { createSeedData } from '../data/seed';
+import { createSeedData, defaultEventTemplates } from '../data/seed';
 
 const DATA_KEY = 'academy-calendar/data';
 const SESSION_KEY = 'academy-calendar/session';
@@ -85,6 +85,8 @@ function migrate(data: Partial<AcademyData>): AcademyData {
     teachers: data.teachers ?? [],
     classes: data.classes ?? [],
     events: data.events ?? [],
+    // 이 필드가 없던 버전에서 올라온 데이터면 기본 틀을 채워 준다.
+    eventTemplates: data.eventTemplates ?? defaultEventTemplates(),
     shifts: data.shifts ?? [],
     consultations: data.consultations ?? [],
     settings: { ...base.settings, ...(data.settings ?? {}) },

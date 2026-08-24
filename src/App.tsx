@@ -3,6 +3,7 @@ import type {
   AcademyEvent,
   Consultation,
   DateStr,
+  EventTemplate,
   ItemKind,
   Occurrence,
   Shift,
@@ -126,6 +127,9 @@ export default function App() {
   }
   function deleteEvent(id: string) {
     update((prev) => ({ ...prev, events: prev.events.filter((x) => x.id !== id) }));
+  }
+  function setEventTemplates(next: EventTemplate[]) {
+    update((prev) => ({ ...prev, eventTemplates: next }));
   }
   function saveShift(s: Shift) {
     update((prev) => {
@@ -314,6 +318,8 @@ export default function App() {
         <EventForm
           initial={modal.initial}
           defaultDate={selectedDate}
+          templates={data.eventTemplates}
+          onChangeTemplates={setEventTemplates}
           onSave={saveEvent}
           onDelete={deleteEvent}
           onClose={() => setModal({ type: 'none' })}

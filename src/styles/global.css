@@ -939,3 +939,34 @@ button:focus-visible {
 
 .leave-table .muted { color: var(--text-3); }
 .leave-table .color-dot { margin-right: 5px; }
+
+/* ----- 자주 쓰는 일정 칩 ----- */
+.template-row { flex-wrap: wrap; }
+
+.template-chip {
+  cursor: pointer;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.template-chip:hover { border-color: var(--accent); color: var(--accent); }
+
+.template-chip .chip-x {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-3);
+  padding: 0 2px;
+  border-radius: 4px;
+}
+
+.template-chip .chip-x:hover { color: var(--danger); background: var(--danger-soft); }
+
+.chip.ghost {
+  border-style: dashed;
+  color: var(--text-3);
+  background: transparent;
+}
+
+.chip.ghost:hover { color: var(--accent); border-color: var(--accent); }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { AcademyEvent, DateStr, EventCategory } from '../types';
+import type { AcademyEvent, DateStr, EventCategory, EventTemplate } from '../types';
 import { Modal } from './Modal';
 import { EVENT_CATEGORY_LABEL } from '../lib/schedule';
 import { newId } from '../lib/id';
@@ -8,12 +8,15 @@ interface EventFormProps {
   /** 수정이면 기존 값, 새로 만들면 undefined */
   initial?: AcademyEvent;
   defaultDate: DateStr;
+  /** 자주 쓰는 일정 틀 */
+  templates: EventTemplate[];
+  onChangeTemplates: (next: EventTemplate[]) => void;
   onSave: (ev: AcademyEvent) => void;
   onDelete?: (id: string) => void;
   onClose: () => void;
 }
 
-export function EventForm({ initial, defaultDate, onSave, onDelete, onClose }: EventFormProps) {
+export function EventForm({ initial, defaultDate, templates, onChangeTemplates, onSave, onDelete, onClose }: EventFormProps) {
   const [title, setTitle] = useState(initial?.title ?? '');
   const [category, setCategory] = useState<EventCategory>(initial?.category ?? 'etc');
   const [startDate, setStartDate] = useState(initial?.startDate ?? defaultDate);
@@ -24,6 +27,43 @@ export function EventForm({ initial, defaultDate, onSave, onDelete, onClose }: E
   const [publicVisible, setPublicVisible] = useState(initial?.publicVisible !== false);
   const [memo, setMemo] = useState(initial?.memo ?? '');
   const [error, setError] = useState('');
+
+  /** 자주 쓰는 일정 틀을 클릭하면 제목·분류·시간이 채워진다. 날짜는 그대로 둔다. */
+  function applyTemplate(tp: EventTemplate) {
+    setTitle(tp.title);
+    setCategory(tp.category);
+    setAllDay(tp.allDay);
+    if (!tp.allDay && tp.startTime && tp.endTime) {
+      setStartTime(tp.startTime);
+      setEndTime(tp.endTime);
+    }
+    setError('');
+  }
+
+  function saveAsTemplate() {
+    if (!title.trim()) return setError('먼저 제목을 입력한 뒤 저장해 주세요.');
+    if (templates.some((tp) => tp.title === title.trim())) {
+      return setError('같은 이름의 자주 쓰는 일정이 이미 있습니다.');
+    }
+    onChangeTemplates([
+      ...templates,
+      {
+        id: newId('tp'),
+        title: title.trim(),
+        category,
+        allDay,
+        startTime: allDay ? undefined : startTime,
+        endTime: allDay ? undefined : endTime,
+      },
+    ]);
+    setError('');
+  }
+
+  function removeTemplate(tp: EventTemplate) {
+    if (window.confirm(`'${tp.title}' 틀을 자주 쓰는 일정에서 뺄까요?\n(이미 달력에 등록된 일정은 그대로 남습니다)`)) {
+      onChangeTemplates(templates.filter((x) => x.id !== tp.id));
+    }
+  }
 
   function submit() {
     if (!title.trim()) return setError('제목을 입력해 주세요.');
@@ -72,6 +112,30 @@ export function EventForm({ initial, defaultDate, onSave, onDelete, onClose }: E
       }
     >
       {error && <div className="form-error">{error}</div>}
+      <div className="field">
+        <label>자주 쓰는 일정 (누르면 아래 칸이 채워집니다)</label>
+        <div className="check-row template-row">
+          {templates.map((tp) => (
+            <span key={tp.id} className="chip template-chip" onClick={() => applyTemplate(tp)}>
+              {tp.title}
+              {!tp.allDay && tp.startTime ? ` ${tp.startTime}~${tp.endTime}` : ''}
+              <span
+                className="chip-x"
+                title="틀 삭제"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeTemplate(tp);
+                }}
+              >
+                ×
+              </span>
+            </span>
+          ))}
+          <button type="button" className="chip ghost" onClick={saveAsTemplate} title="지금 입력한 제목·분류·시간을 자주 쓰는 일정으로 저장">
+            + 현재 내용 저장
+          </button>
+        </div>
+      </div>
       <div className="field">
         <label>제목</label>
         <input

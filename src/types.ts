@@ -142,6 +142,16 @@ export interface Consultation {
   memo?: string;
 }
 
+/** 자주 쓰는 행사·일정 틀. 클릭 한 번으로 등록 폼을 채운다. */
+export interface EventTemplate {
+  id: ID;
+  title: string;
+  category: EventCategory;
+  allDay: boolean;
+  startTime?: TimeStr;
+  endTime?: TimeStr;
+}
+
 /** 앱 전역 설정 */
 export interface Settings {
   academyName: string;
@@ -164,6 +174,8 @@ export interface AcademyData {
   teachers: Teacher[];
   classes: CourseClass[];
   events: AcademyEvent[];
+  /** 자주 쓰는 행사·일정 틀 */
+  eventTemplates: EventTemplate[];
   shifts: Shift[];
   consultations: Consultation[];
   settings: Settings;
