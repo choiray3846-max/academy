@@ -165,13 +165,16 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
       const dayBonus = spreadScore(d, st.id);
 
       // 1순위: 이미 열린 그룹(배치 가능한 강사)의 빈 좌석. 선호·지정 강사면 가산점.
+      // 학생이 1명뿐인 그룹에는 짝짓기 가산점을 줘서 '튜터당 2명 이상'을 유도한다.
       for (let g = 0; g < block.groups.length; g++) {
         const group = block.groups[g];
         if (!group.teacherId) continue;
         const teacher = teacherById.get(group.teacherId);
         if (!teacher || !eligible(teacher, st, subject)) continue;
         if (!group.seats.some((s) => !s.studentId)) continue;
-        const score = 10 + dayBonus + prefBonus(teacher, st, subject);
+        const occupied = group.seats.filter((x) => x.studentId).length;
+        const pairBonus = occupied === 1 ? 3 : occupied === 2 ? 2 : 0;
+        const score = 10 + dayBonus + prefBonus(teacher, st, subject) + pairBonus;
         if (!best || score > best.score) best = { d, b, groupIndex: g, score };
       }
 
@@ -232,6 +235,10 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
   }
 
   let placed = 0;
+  /** 이번 실행에서 자동으로 놓은 좌석 위치 ('d-b-g-seat') — 손 배치와 구분 */
+  const placedKeys = new Set<string>();
+  /** 이번 실행에서 강사를 새로 배정한 그룹 ('d-b-g') */
+  const openedKeys = new Set<string>();
 
   /** 주어진 작업들을 회차가 다 찰 때까지 라운드 방식으로 배치 */
   function runPhase(phaseTasks: Task[]) {
@@ -248,11 +255,16 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
         const slot = findSlot(task);
         if (!slot) continue;
         const group = draft.days[slot.d].blocks[slot.b].groups[slot.groupIndex];
-        if (slot.newTeacherId) group.teacherId = slot.newTeacherId;
-        const seat = group.seats.find((s) => !s.studentId)!;
+        if (slot.newTeacherId) {
+          group.teacherId = slot.newTeacherId;
+          openedKeys.add(`${slot.d}-${slot.b}-${slot.groupIndex}`);
+        }
+        const seatIndex = group.seats.findIndex((s) => !s.studentId);
+        const seat = group.seats[seatIndex];
         seat.studentId = task.st.id;
         seat.subject = task.subject || undefined;
         seat.managerId = seat.managerId ?? defaultManagerId;
+        placedKeys.add(`${slot.d}-${slot.b}-${slot.groupIndex}-${seatIndex}`);
         needs.set(taskKey(task), (needs.get(taskKey(task)) ?? 0) - 1);
         placed++;
         progress = true;
@@ -265,6 +277,72 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
   // 2단계: 나머지 학생들을 배치한다.
   runPhase(tasks.filter(hasMustForTask));
   runPhase(tasks.filter((t) => !hasMustForTask(t)));
+
+  /**
+   * 마무리: 학생이 1명뿐인 그룹을 찾아, 그 학생을 다른 시간대의
+   * 1~2명 그룹으로 옮겨 합칠 수 있으면 옮긴다 (튜터당 2명 이상 유도).
+   * 이번 실행에서 자동으로 놓은 좌석만 움직이고, 손 배치는 건드리지 않는다.
+   */
+  const studentById = new Map(data.students.map((st) => [st.id, st]));
+  let mergedMoved = true;
+  let mergeGuard = 0;
+  while (mergedMoved && mergeGuard++ < 100) {
+    mergedMoved = false;
+    for (let d = 0; d < DAYS_PER_WEEK && !mergedMoved; d++) {
+      for (let b = 0; b < BLOCKS_PER_DAY && !mergedMoved; b++) {
+        const block = draft.days[d].blocks[b];
+        for (let g = 0; g < block.groups.length && !mergedMoved; g++) {
+          const group = block.groups[g];
+          if (!group.teacherId) continue;
+          const occupiedSeats = group.seats
+            .map((seat, index) => ({ seat, index }))
+            .filter((x) => x.seat.studentId);
+          if (occupiedSeats.length !== 1) continue;
+          const { seat, index: seatIndex } = occupiedSeats[0];
+          if (!placedKeys.has(`${d}-${b}-${g}-${seatIndex}`)) continue;
+          const st = studentById.get(seat.studentId!);
+          if (!st) continue;
+          const subject = seat.subject?.trim() ?? '';
+
+          // 옮겨 갈 곳: 강사가 배치 가능하고 학생이 1~2명인 그룹 (많이 찬 곳 우선)
+          let target: { d2: number; b2: number; g2: number; score: number } | null = null;
+          for (const key of st.availability ?? []) {
+            const [d2, b2] = key.split('-').map(Number);
+            if (!(d2 >= 0 && d2 < DAYS_PER_WEEK && b2 >= 0 && b2 < BLOCKS_PER_DAY)) continue;
+            if (d2 === d && b2 === b) continue;
+            if (studentInBlock(d2, b2, st.id)) continue;
+            const removedSameDay = d2 === d ? 1 : 0;
+            if (studentDayCount(d2, st.id) - removedSameDay >= MAX_SESSIONS_PER_DAY) continue;
+            const block2 = draft.days[d2].blocks[b2];
+            for (let g2 = 0; g2 < block2.groups.length; g2++) {
+              const grp2 = block2.groups[g2];
+              if (!grp2.teacherId) continue;
+              const t2 = teacherById.get(grp2.teacherId);
+              if (!t2 || !eligible(t2, st, subject)) continue;
+              const occ = grp2.seats.filter((x) => x.studentId).length;
+              if (occ < 1 || occ >= grp2.seats.length) continue;
+              const score = occ * 10 + prefBonus(t2, st, subject);
+              if (!target || score > target.score) target = { d2, b2, g2, score };
+            }
+          }
+          if (!target) continue;
+
+          const dst = draft.days[target.d2].blocks[target.b2].groups[target.g2];
+          const freeIndex = dst.seats.findIndex((x) => !x.studentId);
+          dst.seats[freeIndex] = { ...seat };
+          group.seats[seatIndex] = {};
+          placedKeys.delete(`${d}-${b}-${g}-${seatIndex}`);
+          placedKeys.add(`${target.d2}-${target.b2}-${target.g2}-${freeIndex}`);
+          // 이번에 열었던 그룹이 비면 강사 배정도 거둔다.
+          if (openedKeys.has(`${d}-${b}-${g}`) && group.seats.every((x) => !x.studentId)) {
+            group.teacherId = undefined;
+            openedKeys.delete(`${d}-${b}-${g}`);
+          }
+          mergedMoved = true;
+        }
+      }
+    }
+  }
 
   const unplaced = tasks
     .filter((t) => (needs.get(taskKey(t)) ?? 0) > 0)
