@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SeatAssign, TimetableData, WeekBoard } from './types';
-import { DAY_LABELS, MAX_SESSIONS_PER_DAY, prefsForSubject, studentEnrollments, teacherSubjects } from './types';
+import { compareStudents, DAY_LABELS, MAX_SESSIONS_PER_DAY, prefsForSubject, studentEnrollments, teacherSubjects } from './types';
 import { addDays, mondayOf, shortDate, today, weekTitle } from './lib/date';
 import { loadData, saveData } from './lib/storage';
 import {
@@ -312,7 +312,7 @@ export default function App() {
         return { student: s, subject: subj, count, target: e.weeklyCount as number | undefined };
       });
     })
-    .sort((a, b) => a.student.name.localeCompare(b.student.name, 'ko'));
+    .sort((a, b) => compareStudents(a.student, b.student));
 
   const conflictPeople = (list: typeof conflicts) =>
     list.map((c) => {

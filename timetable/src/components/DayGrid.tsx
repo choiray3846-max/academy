@@ -1,5 +1,5 @@
 import type { Conflict } from '../lib/board';
-import { studentEnrollments } from '../types';
+import { compareStudents, studentEnrollments } from '../types';
 import type { DayBoard, Manager, SeatAssign, Student, Teacher } from '../types';
 import { BLOCK_NAMES, SEATS_PER_GROUP } from '../types';
 
@@ -28,7 +28,7 @@ export function DayGrid({
   onSetSeat,
   onClearSeat,
 }: DayGridProps) {
-  const activeStudents = students.filter((s) => !s.archived);
+  const activeStudents = students.filter((s) => !s.archived).sort(compareStudents);
   const activeTeachers = teachers.filter((t) => !t.archived);
   const activeManagers = managers.filter((m) => !m.archived);
   const studentById = new Map(students.map((s) => [s.id, s]));

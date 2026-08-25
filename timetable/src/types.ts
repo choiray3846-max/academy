@@ -83,6 +83,22 @@ export function prefsForSubject(
   return st.subjectTeacherPrefs?.[subject] ?? st.teacherPrefs ?? {};
 }
 
+/**
+ * 학년 정렬용 순위. '초1'~'초6' → 1~6, '중1'~'중3' → 11~13,
+ * '고1'~'고3' → 21~23. 형식이 다르면 맨 뒤(99).
+ */
+export function gradeRank(grade: string): number {
+  const m = grade.trim().match(/(초|중|고)\s*(\d)/);
+  if (!m) return 99;
+  const base = m[1] === '초' ? 0 : m[1] === '중' ? 10 : 20;
+  return base + Number(m[2]);
+}
+
+/** 학생 정렬: 학년순(초→중→고) → 같은 학년은 이름 가나다순 */
+export function compareStudents(a: Student, b: Student): number {
+  return gradeRank(a.grade) - gradeRank(b.grade) || a.name.localeCompare(b.name, 'ko');
+}
+
 /** 강사 과목 문자열을 과목 목록으로 (쉼표·가운뎃점·빗금 구분) */
 export function teacherSubjects(t: Teacher): string[] {
   return (t.subject ?? '')

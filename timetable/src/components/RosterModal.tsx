@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { Manager, Student, Teacher, TimetableData } from '../types';
-import { studentEnrollments } from '../types';
+import { compareStudents, studentEnrollments } from '../types';
 import { EnrollmentEditor } from './EnrollmentEditor';
 import { Modal } from './Modal';
 import { AvailabilityEditor } from './AvailabilityEditor';
@@ -182,7 +182,7 @@ export function RosterModal({
       {tab === 'students' && (
         <>
           <div className="manage-list">
-            {data.students.map((s) => (
+            {[...data.students].sort(compareStudents).map((s) => (
               <div key={s.id} className="manage-item" style={{ opacity: s.archived ? 0.5 : 1 }}>
                 <input
                   value={s.name}
