@@ -59,7 +59,9 @@ function headers(cfg: SyncConfig): Record<string, string> {
 }
 
 function endpoint(cfg: SyncConfig): string {
-  return `${cfg.url.replace(/\/$/, '')}/rest/v1/boards`;
+  // 사용자가 '/rest/v1/'까지 붙여 넣어도 동작하도록 정리한다.
+  const base = cfg.url.replace(/\/+$/, '').replace(/\/rest\/v1$/, '');
+  return `${base}/rest/v1/boards`;
 }
 
 export interface RemoteBoard {
