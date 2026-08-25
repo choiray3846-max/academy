@@ -82,6 +82,34 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
     const list = teacherSubjects(t);
     return list.length === 0 || subject === '' || list.includes(subject);
   };
+
+  /**
+   * 과목 계열: 같은 계열끼리만 한 그룹(한 수업)에 섞일 수 있다.
+   * - 어문 계열: 국어·영어 등
+   * - 수리·과학 계열: 수학·과학·물리 등
+   * 표에 없는 과목은 자기 과목끼리만 묶인다.
+   */
+  const SUBJECT_FAMILIES: string[][] = [
+    ['국어', '영어', '사회', '한국사', '역사'],
+    ['수학', '과학', '물리', '화학', '생명과학', '생물', '지구과학'],
+  ];
+  function subjectFamily(subject: string): string {
+    for (let i = 0; i < SUBJECT_FAMILIES.length; i++) {
+      if (SUBJECT_FAMILIES[i].includes(subject)) return `family${i}`;
+    }
+    return `only:${subject}`;
+  }
+  /** 빈 과목은 무엇과도 호환 */
+  function subjectsCompatible(a: string, b: string): boolean {
+    if (a === '' || b === '') return true;
+    return subjectFamily(a) === subjectFamily(b);
+  }
+  /** 그룹에 이미 앉은 과목들과 이 과목이 섞여도 되는지 */
+  function groupCompatible(group: { seats: { studentId?: string; subject?: string }[] }, subject: string): boolean {
+    return group.seats.every(
+      (seat) => !seat.studentId || subjectsCompatible(seat.subject?.trim() ?? '', subject),
+    );
+  }
   const mustIdsOf = (st: Student, subject: string) =>
     Object.entries(prefsForSubject(st, subject))
       .filter(([, level]) => level === 'must')
@@ -188,8 +216,12 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
         if (!teacher || !eligible(teacher, st, subject)) continue;
         if (!group.seats.some((s) => !s.studentId)) continue;
         const occupied = group.seats.filter((x) => x.studentId).length;
-        const pairBonus = occupied === 1 ? 3 : occupied === 2 ? 2 : 0;
-        const score = 10 + dayBonus + prefBonus(teacher, st, subject) + pairBonus;
+        const compatible = groupCompatible(group, subject);
+        // 계열이 다르면 크게 감점: 정상적인 다른 자리(최소 점수 2)보다 항상
+        // 낮아져서, 정말 다른 자리가 없을 때만 섞인다.
+        const base = compatible ? 10 : -15;
+        const pairBonus = compatible ? (occupied === 1 ? 3 : occupied === 2 ? 2 : 0) : 0;
+        const score = base + dayBonus + prefBonus(teacher, st, subject) + pairBonus;
         if (!best || score > best.score) best = { d, b, groupIndex: g, score };
       }
 
@@ -347,6 +379,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
               if (!t2 || !eligible(t2, st, subject)) continue;
               const occ = grp2.seats.filter((x) => x.studentId).length;
               if (occ < 1 || occ >= grp2.seats.length) continue;
+              if (!groupCompatible(grp2, subject)) continue; // 계열이 다르면 합치지 않음
               const score = occ * 10 + prefBonus(t2, st, subject);
               if (!target || score > target.score) target = { d2, b2, g2, score };
             }
