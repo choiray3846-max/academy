@@ -21,7 +21,7 @@ import { addDays, fromDateStr } from './date';
  */
 
 const COLS_PER_DAY = 7; // 교시, T, M, 학생명, 과목, 학년, 좌석
-const STRIDE = COLS_PER_DAY + 1; // 요일 사이 빈 칸 1
+const STRIDE = COLS_PER_DAY; // 요일 사이 빈 칸 없이 바로 이어 붙인다
 
 const BORDER_THIN = { style: 'thin' as const, color: { argb: 'FFB0B0B0' } };
 const BORDERS = { top: BORDER_THIN, left: BORDER_THIN, bottom: BORDER_THIN, right: BORDER_THIN };
@@ -52,7 +52,6 @@ export async function exportWeekToExcel(
     widths.forEach((w, i) => {
       ws.getColumn(base + i).width = w;
     });
-    if (d < DAYS_PER_WEEK - 1) ws.getColumn(base + COLS_PER_DAY).width = 2;
   }
 
   for (let d = 0; d < DAYS_PER_WEEK; d++) {
