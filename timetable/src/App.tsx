@@ -1,8 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SeatAssign, TimetableData, WeekBoard } from './types';
 import { DAY_LABELS, MAX_SESSIONS_PER_DAY, studentEnrollments, teacherSubjects } from './types';
 import { addDays, mondayOf, shortDate, today, weekTitle } from './lib/date';
 import { loadData, saveData } from './lib/storage';
+import {
+  fetchRemote,
+  fetchRemoteStamp,
+  loadSyncConfig,
+  pushRemote,
+  saveSyncConfig,
+  type SyncConfig,
+} from './lib/sync';
 import {
   emptyWeek,
   findConflicts,
@@ -31,6 +39,18 @@ export default function App() {
   const [fillResult, setFillResult] = useState<FillResult | null>(null);
   const [saveError, setSaveError] = useState('');
 
+  /* ----- 여러 컴퓨터 공유 (Supabase) ----- */
+  const [syncCfg, setSyncCfg] = useState<SyncConfig | null>(loadSyncConfig);
+  const [syncStatus, setSyncStatus] = useState<'off' | 'ok' | 'syncing' | 'error'>(
+    loadSyncConfig() ? 'syncing' : 'off',
+  );
+  /** 우리가 마지막으로 알고 있는 서버 버전. 이 값과 다르면 새 데이터가 온 것 */
+  const remoteStampRef = useRef<string | null>(null);
+  /** 서버에서 받은 데이터를 적용하는 중이면 true → 다시 올리지 않는다 */
+  const applyingRemoteRef = useRef(false);
+  /** 아직 서버에 안 올라간 로컬 변경이 있는지 */
+  const dirtyRef = useRef(false);
+
   useEffect(() => {
     const result = saveData(data);
     setSaveError(result.ok ? '' : result.error ?? '');
@@ -39,6 +59,87 @@ export default function App() {
   function update(updater: (prev: TimetableData) => TimetableData) {
     setData((prev) => updater(prev));
   }
+
+  function applyRemote(remoteData: TimetableData, stamp: string) {
+    applyingRemoteRef.current = true;
+    remoteStampRef.current = stamp;
+    dirtyRef.current = false;
+    setData(remoteData);
+    // setData 반영 뒤 플래그를 풀어야 업로드 이펙트가 건너뛴다.
+    setTimeout(() => {
+      applyingRemoteRef.current = false;
+    }, 0);
+  }
+
+  function changeSyncConfig(cfg: SyncConfig | null) {
+    saveSyncConfig(cfg);
+    setSyncCfg(cfg);
+    remoteStampRef.current = null;
+    setSyncStatus(cfg ? 'syncing' : 'off');
+  }
+
+  // 처음 연결됐을 때: 서버에 데이터가 있으면 내려받는다.
+  useEffect(() => {
+    if (!syncCfg) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const remote = await fetchRemote(syncCfg);
+        if (cancelled) return;
+        if (remote) {
+          applyRemote(remote.data, remote.updatedAt);
+        } else {
+          // 서버가 비어 있으면 지금 데이터를 올린다.
+          remoteStampRef.current = await pushRemote(syncCfg, data);
+        }
+        setSyncStatus('ok');
+      } catch {
+        if (!cancelled) setSyncStatus('error');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncCfg]);
+
+  // 로컬 변경 → 1.5초 디바운스 후 서버에 올리기
+  useEffect(() => {
+    if (!syncCfg) return;
+    if (applyingRemoteRef.current) return;
+    dirtyRef.current = true;
+    const timer = setTimeout(async () => {
+      try {
+        setSyncStatus('syncing');
+        remoteStampRef.current = await pushRemote(syncCfg, data);
+        dirtyRef.current = false;
+        setSyncStatus('ok');
+      } catch {
+        setSyncStatus('error');
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, syncCfg]);
+
+  // 8초마다 서버에 새 버전이 있는지 확인해서 내려받기
+  useEffect(() => {
+    if (!syncCfg) return;
+    const interval = setInterval(async () => {
+      try {
+        const stamp = await fetchRemoteStamp(syncCfg);
+        if (stamp && stamp !== remoteStampRef.current && !dirtyRef.current) {
+          const remote = await fetchRemote(syncCfg);
+          if (remote) applyRemote(remote.data, remote.updatedAt);
+        }
+        setSyncStatus((prev) => (prev === 'syncing' ? prev : 'ok'));
+      } catch {
+        setSyncStatus('error');
+      }
+    }, 8000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncCfg]);
 
   const week: WeekBoard = useMemo(() => weekOf(data, weekStart), [data, weekStart]);
   const conflicts = useMemo(() => findConflicts(week), [week]);
@@ -225,6 +326,11 @@ export default function App() {
     <div className="app">
       <div className="topbar">
         <h1>{data.settings.academyName} 시간표</h1>
+        {syncStatus !== 'off' && (
+          <span className={`sync-badge ${syncStatus}`} title="여러 컴퓨터 공유 상태">
+            {syncStatus === 'ok' ? '공유중 ✓' : syncStatus === 'syncing' ? '저장중…' : '공유 오류'}
+          </span>
+        )}
         <div className="spacer" />
         {import.meta.env.PROD && (
           <a className="app-link" href="../">달력 열기 ↗</a>
@@ -415,6 +521,9 @@ export default function App() {
           data={data}
           update={update}
           replaceAll={(next) => setData(next)}
+          syncCfg={syncCfg}
+          syncStatus={syncStatus}
+          onChangeSyncConfig={changeSyncConfig}
           onClose={() => setRosterOpen(false)}
         />
       )}
