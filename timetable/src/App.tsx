@@ -20,6 +20,7 @@ import {
   weekOf,
 } from './lib/board';
 import { autoFill, type FillResult } from './lib/autofill';
+import { exportWeekToExcel } from './lib/excel';
 import { Modal } from './components/Modal';
 import { DayGrid } from './components/DayGrid';
 import { WeekPrint } from './components/WeekPrint';
@@ -335,6 +336,15 @@ export default function App() {
         {import.meta.env.PROD && (
           <a className="app-link" href="../">달력 열기 ↗</a>
         )}
+        <button
+          onClick={() => {
+            exportWeekToExcel(data, week, data.settings).catch(() =>
+              window.alert('엑셀 파일을 만들지 못했습니다. 새로고침 후 다시 시도해 주세요.'),
+            );
+          }}
+        >
+          엑셀
+        </button>
         <button onClick={() => setRosterOpen(true)}>명단·설정</button>
         <button onClick={() => window.print()}>인쇄</button>
       </div>
