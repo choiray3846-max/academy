@@ -417,3 +417,14 @@ td.dup select { border-color: var(--danger); background: var(--danger-soft); }
   overflow-x: auto;
   margin: 6px 0 0;
 }
+
+/* 과목별 강사 관계 편집 */
+.pref-subject { margin-bottom: 4px; }
+.pref-subject-title {
+  margin: 8px 0 6px;
+  font-size: 13px;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+.pref-must-note { color: var(--warn); font-weight: 600; font-size: 12px; }

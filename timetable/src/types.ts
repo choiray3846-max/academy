@@ -41,9 +41,13 @@ export interface Student {
   /** 올 수 있는 시간대. '요일-교시' 키 목록 (예: '0-1' = 월 B교시) */
   availability?: string[];
   /**
-   * 강사별 관계. 'must'(지정)가 하나라도 있으면 그 강사(들)에게만 배치되고,
+   * 과목별 강사 관계. 과목 이름 → (강사 id → 'must'|'prefer').
+   * 'must'(지정)가 있으면 그 과목은 그 강사(들)에게만 배치되고,
    * 'prefer'(선호)는 자동 배치에서 우선순위를 높인다.
+   * 예: { 수학: { t1: 'must' }, 영어: { t3: 'prefer' } }
    */
+  subjectTeacherPrefs?: Record<string, Record<ID, 'must' | 'prefer'>>;
+  /** @deprecated subjectTeacherPrefs로 대체됨. 옛 데이터 호환용. */
   teacherPrefs?: Record<ID, 'must' | 'prefer'>;
   memo?: string;
   archived?: boolean;
@@ -66,6 +70,17 @@ export function studentEnrollments(s: Student): Enrollment[] {
     return [{ subject: s.defaultSubject?.trim() ?? '', weeklyCount: s.weeklyCount ?? 0 }];
   }
   return [];
+}
+
+/**
+ * 이 학생의 이 과목에 적용되는 강사 관계.
+ * 과목별 설정이 있으면 그것을, 없으면 옛 학생 단위 설정을 쓴다.
+ */
+export function prefsForSubject(
+  st: Student,
+  subject: string,
+): Record<ID, 'must' | 'prefer'> {
+  return st.subjectTeacherPrefs?.[subject] ?? st.teacherPrefs ?? {};
 }
 
 /** 강사 과목 문자열을 과목 목록으로 (쉼표·가운뎃점·빗금 구분) */

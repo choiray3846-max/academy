@@ -208,11 +208,13 @@ export function RosterModal({
                 </button>
                 <button onClick={() => setPrefTarget(s.id)}>
                   강사
-                  {Object.values(s.teacherPrefs ?? {}).some((v) => v === 'must')
-                    ? ' 지정'
-                    : Object.keys(s.teacherPrefs ?? {}).length
-                      ? ' 선호'
-                      : ''}
+                  {(() => {
+                    const all = [
+                      ...Object.values(s.teacherPrefs ?? {}),
+                      ...Object.values(s.subjectTeacherPrefs ?? {}).flatMap((m) => Object.values(m)),
+                    ];
+                    return all.includes('must') ? ' 지정' : all.length ? ' 선호' : '';
+                  })()}
                 </button>
                 <div className="grow" />
                 <button onClick={() => patchStudent(s.id, { archived: !s.archived })}>
@@ -494,7 +496,9 @@ create policy "open access" on boards
           <TeacherPrefEditor
             student={student}
             teachers={data.teachers}
-            onChange={(next) => patchStudent(prefTarget, { teacherPrefs: next })}
+            onChange={(next) =>
+              patchStudent(prefTarget, { subjectTeacherPrefs: next, teacherPrefs: undefined })
+            }
             onClose={() => setPrefTarget(null)}
           />
         );

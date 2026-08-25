@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SeatAssign, TimetableData, WeekBoard } from './types';
-import { DAY_LABELS, MAX_SESSIONS_PER_DAY, studentEnrollments, teacherSubjects } from './types';
+import { DAY_LABELS, MAX_SESSIONS_PER_DAY, prefsForSubject, studentEnrollments, teacherSubjects } from './types';
 import { addDays, mondayOf, shortDate, today, weekTitle } from './lib/date';
 import { loadData, saveData } from './lib/storage';
 import {
@@ -249,7 +249,7 @@ export default function App() {
               const list = teacherSubjects(mt);
               return list.length === 0 || seatSubject === '' || list.includes(seatSubject);
             };
-            const mustIds = Object.entries(st.teacherPrefs ?? {})
+            const mustIds = Object.entries(prefsForSubject(st, seatSubject))
               .filter(([, v]) => v === 'must')
               .map(([id]) => id)
               .filter(canTeach);

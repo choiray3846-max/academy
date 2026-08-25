@@ -5,6 +5,7 @@ import {
   DAY_LABELS,
   BLOCK_NAMES,
   MAX_SESSIONS_PER_DAY,
+  prefsForSubject,
   slotKey,
   studentEnrollments,
   teacherSubjects,
@@ -81,8 +82,8 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
     const list = teacherSubjects(t);
     return list.length === 0 || subject === '' || list.includes(subject);
   };
-  const mustIdsOf = (st: Student) =>
-    Object.entries(st.teacherPrefs ?? {})
+  const mustIdsOf = (st: Student, subject: string) =>
+    Object.entries(prefsForSubject(st, subject))
       .filter(([, level]) => level === 'must')
       .map(([id]) => id);
   /**
@@ -94,7 +95,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
    */
   const eligible = (t: Teacher, st: Student, subject: string) => {
     if (!subjectMatches(t, subject)) return false;
-    const mustForSubject = mustIdsOf(st).filter((id) => {
+    const mustForSubject = mustIdsOf(st, subject).filter((id) => {
       const mt = teacherById.get(id);
       return mt && subjectMatches(mt, subject);
     });
@@ -107,8 +108,8 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
    * - 퍼뜨리기: 0~12 — 기존 수업일에서 먼 날일수록 높음
    * - 배치 형태: 열린 그룹 10 / 새 그룹 5
    */
-  const prefBonus = (t: Teacher, st: Student) => {
-    const level = st.teacherPrefs?.[t.id];
+  const prefBonus = (t: Teacher, st: Student, subject: string) => {
+    const level = prefsForSubject(st, subject)[t.id];
     return level === 'must' ? 30 : level === 'prefer' ? 20 : 0;
   };
 
@@ -170,7 +171,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
         const teacher = teacherById.get(group.teacherId);
         if (!teacher || !eligible(teacher, st, subject)) continue;
         if (!group.seats.some((s) => !s.studentId)) continue;
-        const score = 10 + dayBonus + prefBonus(teacher, st);
+        const score = 10 + dayBonus + prefBonus(teacher, st, subject);
         if (!best || score > best.score) best = { d, b, groupIndex: g, score };
       }
 
@@ -186,10 +187,10 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
               (t.availability ?? []).includes(slotKey(d, b)) &&
               !teacherBusy(d, b, t.id),
           )
-          .sort((a, c) => prefBonus(c, st) - prefBonus(a, st));
+          .sort((a, c) => prefBonus(c, st, subject) - prefBonus(a, st, subject));
         const teacher = candidates[0];
         if (!teacher) continue;
-        const score = 5 + dayBonus + prefBonus(teacher, st);
+        const score = 5 + dayBonus + prefBonus(teacher, st, subject);
         if (!best || score > best.score) best = { d, b, groupIndex: g, newTeacherId: teacher.id, score };
         break; // 빈 그룹은 어느 것이든 같으므로 첫 번째만 본다
       }
@@ -212,7 +213,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
     }
     if (allCapped) return `하루 최대 ${MAX_SESSIONS_PER_DAY}회 제한 때문에 남는 시간대가 없습니다 (가능 요일을 늘려 주세요)`;
     if (!sawFreeSeat) return '가능한 시간대의 좌석이 모두 찼습니다';
-    const must = mustIdsOf(st);
+    const must = mustIdsOf(st, subject);
     if (must.length > 0) {
       const names = must.map((id) => teacherById.get(id)?.name ?? '?').join('·');
       return `지정 강사(${names})를 가능한 시간대에 배정할 수 없습니다 (강사 가능 시간 확인)`;
@@ -224,7 +225,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
 
   /** 이 작업에 실제로 적용되는 지정 강사가 있는지 (그 과목을 가르칠 수 있는 지정) */
   function hasMustForTask(task: Task): boolean {
-    return mustIdsOf(task.st).some((id) => {
+    return mustIdsOf(task.st, task.subject).some((id) => {
       const mt = teacherById.get(id);
       return mt && subjectMatches(mt, task.subject);
     });
