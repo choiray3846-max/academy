@@ -141,6 +141,21 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
     return draft.days[d].blocks[b].groups.some((g) => g.teacherId === teacherId);
   }
 
+  /** 튜터가 하루에 맡길 기본 최대 교시 수 (대안이 없으면 초과 허용) */
+  const TEACHER_SOFT_MAX_PER_DAY = 2;
+
+  /** 이 튜터가 그 날 맡고 있는 교시 수 */
+  function teacherDayBlocks(d: number, teacherId: string): number {
+    return draft.days[d].blocks.filter((blk) => blk.groups.some((g) => g.teacherId === teacherId)).length;
+  }
+
+  /** 이 튜터가 이번 주에 맡고 있는 총 교시 수 (고른 분배용) */
+  function teacherWeekLoad(teacherId: string): number {
+    let n = 0;
+    for (let d = 0; d < DAYS_PER_WEEK; d++) n += teacherDayBlocks(d, teacherId);
+    return n;
+  }
+
   interface Candidate {
     d: number;
     b: number;
@@ -178,22 +193,33 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
         if (!best || score > best.score) best = { d, b, groupIndex: g, score };
       }
 
-      // 2순위: 빈 그룹을 새로 열기. 선호·지정 강사를 먼저 고른다.
+      // 2순위: 빈 그룹을 새로 열기.
+      // 강사 선택: 선호·지정 우선 → 하루 2교시 미만인 튜터 우선 →
+      // 이번 주 수업이 적은 튜터 우선 (모든 튜터를 고르게 활용).
       for (let g = 0; g < block.groups.length; g++) {
         const group = block.groups[g];
         if (group.teacherId) continue;
         if (!group.seats.some((s) => !s.studentId)) continue;
-        const candidates = activeTeachers
-          .filter(
-            (t) =>
-              eligible(t, st, subject) &&
-              (t.availability ?? []).includes(slotKey(d, b)) &&
-              !teacherBusy(d, b, t.id),
-          )
-          .sort((a, c) => prefBonus(c, st, subject) - prefBonus(a, st, subject));
-        const teacher = candidates[0];
+        const all = activeTeachers.filter(
+          (t) =>
+            eligible(t, st, subject) &&
+            (t.availability ?? []).includes(slotKey(d, b)) &&
+            !teacherBusy(d, b, t.id),
+        );
+        // 하루 소프트 최대에 안 걸린 튜터를 먼저, 없으면 어쩔 수 없이 전체에서
+        const fresh = all.filter((t) => teacherDayBlocks(d, t.id) < TEACHER_SOFT_MAX_PER_DAY);
+        const pool = fresh.length > 0 ? fresh : all;
+        pool.sort(
+          (a, c) =>
+            prefBonus(c, st, subject) - prefBonus(a, st, subject) ||
+            teacherWeekLoad(a.id) - teacherWeekLoad(c.id),
+        );
+        const teacher = pool[0];
         if (!teacher) continue;
-        const score = 5 + dayBonus + prefBonus(teacher, st, subject);
+        // 하루 최대를 넘겨야 하는 자리는 점수를 낮춰서, 다른 슬롯에 여유 튜터가
+        // 있으면 그쪽이 이기게 한다.
+        const overCap = teacherDayBlocks(d, teacher.id) >= TEACHER_SOFT_MAX_PER_DAY;
+        const score = (overCap ? 2 : 5) + dayBonus + prefBonus(teacher, st, subject);
         if (!best || score > best.score) best = { d, b, groupIndex: g, newTeacherId: teacher.id, score };
         break; // 빈 그룹은 어느 것이든 같으므로 첫 번째만 본다
       }
