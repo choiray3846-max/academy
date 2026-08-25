@@ -222,30 +222,48 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
       : '가능한 시간대에 배정할 강사가 없습니다 (강사 가능 시간 확인)';
   }
 
+  /** 이 작업에 실제로 적용되는 지정 강사가 있는지 (그 과목을 가르칠 수 있는 지정) */
+  function hasMustForTask(task: Task): boolean {
+    return mustIdsOf(task.st).some((id) => {
+      const mt = teacherById.get(id);
+      return mt && subjectMatches(mt, task.subject);
+    });
+  }
+
   let placed = 0;
-  let progress = true;
-  let guard = 0;
-  while (progress && guard++ < 500) {
-    progress = false;
-    // 라운드마다 작업당 한 세션씩: 자리가 빠듯한(가능 슬롯 적은) 학생 먼저
-    const order = tasks
-      .filter((t) => (needs.get(taskKey(t)) ?? 0) > 0)
-      .sort((a, b) => (a.st.availability?.length ?? 0) - (b.st.availability?.length ?? 0));
-    for (const task of order) {
-      if ((needs.get(taskKey(task)) ?? 0) <= 0) continue;
-      const slot = findSlot(task);
-      if (!slot) continue;
-      const group = draft.days[slot.d].blocks[slot.b].groups[slot.groupIndex];
-      if (slot.newTeacherId) group.teacherId = slot.newTeacherId;
-      const seat = group.seats.find((s) => !s.studentId)!;
-      seat.studentId = task.st.id;
-      seat.subject = task.subject || undefined;
-      seat.managerId = seat.managerId ?? defaultManagerId;
-      needs.set(taskKey(task), (needs.get(taskKey(task)) ?? 0) - 1);
-      placed++;
-      progress = true;
+
+  /** 주어진 작업들을 회차가 다 찰 때까지 라운드 방식으로 배치 */
+  function runPhase(phaseTasks: Task[]) {
+    let progress = true;
+    let guard = 0;
+    while (progress && guard++ < 500) {
+      progress = false;
+      // 라운드마다 작업당 한 세션씩: 자리가 빠듯한(가능 슬롯 적은) 학생 먼저
+      const order = phaseTasks
+        .filter((t) => (needs.get(taskKey(t)) ?? 0) > 0)
+        .sort((a, b) => (a.st.availability?.length ?? 0) - (b.st.availability?.length ?? 0));
+      for (const task of order) {
+        if ((needs.get(taskKey(task)) ?? 0) <= 0) continue;
+        const slot = findSlot(task);
+        if (!slot) continue;
+        const group = draft.days[slot.d].blocks[slot.b].groups[slot.groupIndex];
+        if (slot.newTeacherId) group.teacherId = slot.newTeacherId;
+        const seat = group.seats.find((s) => !s.studentId)!;
+        seat.studentId = task.st.id;
+        seat.subject = task.subject || undefined;
+        seat.managerId = seat.managerId ?? defaultManagerId;
+        needs.set(taskKey(task), (needs.get(taskKey(task)) ?? 0) - 1);
+        placed++;
+        progress = true;
+      }
     }
   }
+
+  // 1단계: 지정 강사가 있는 학생들을 먼저 전부 배치한다.
+  //         지정 강사는 선택지가 좁아서, 나중에 배치하면 자리를 뺏길 수 있다.
+  // 2단계: 나머지 학생들을 배치한다.
+  runPhase(tasks.filter(hasMustForTask));
+  runPhase(tasks.filter((t) => !hasMustForTask(t)));
 
   const unplaced = tasks
     .filter((t) => (needs.get(taskKey(t)) ?? 0) > 0)
