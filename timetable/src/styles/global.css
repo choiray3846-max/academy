@@ -385,3 +385,9 @@ td.dup select { border-color: var(--danger); background: var(--danger-soft); }
   border-radius: 8px;
 }
 .app-link:hover { border-color: var(--accent); }
+
+/* 과목별 배정 현황·과목 편집 */
+.count-list .subj { color: var(--accent); font-weight: 600; }
+.enroll-list { display: flex; flex-direction: column; gap: 6px; }
+.enroll-item { display: flex; align-items: center; gap: 8px; }
+.enroll-item label { font-size: 13px; display: flex; align-items: center; gap: 4px; }

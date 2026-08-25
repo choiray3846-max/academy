@@ -102,6 +102,27 @@ export function studentWeekCounts(week: WeekBoard): Map<ID, number> {
   return counts;
 }
 
+/**
+ * 학생×과목별 이번 주 배정 횟수.
+ * 키는 `${studentId}|${과목}` (과목이 비어 있으면 `${studentId}|`).
+ */
+export function studentSubjectWeekCounts(week: WeekBoard): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const day of week.days) {
+    for (const block of day.blocks) {
+      for (const group of block.groups) {
+        for (const seat of group.seats) {
+          if (seat.studentId) {
+            const key = `${seat.studentId}|${seat.subject?.trim() ?? ''}`;
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+          }
+        }
+      }
+    }
+  }
+  return counts;
+}
+
 /** 판이 완전히 비어 있는지 */
 export function isWeekEmpty(week: WeekBoard): boolean {
   return week.days.every((d) =>

@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Manager, Student, Teacher, TimetableData } from '../types';
+import { studentEnrollments } from '../types';
+import { EnrollmentEditor } from './EnrollmentEditor';
 import { Modal } from './Modal';
 import { AvailabilityEditor } from './AvailabilityEditor';
 import { TeacherPrefEditor } from './TeacherPrefEditor';
@@ -24,6 +26,8 @@ export function RosterModal({ data, update, replaceAll, onClose }: RosterModalPr
   const [availTarget, setAvailTarget] = useState<{ kind: 'student' | 'teacher'; id: string } | null>(null);
   /** 담당 강사 관계 편집 대상 학생 */
   const [prefTarget, setPrefTarget] = useState<string | null>(null);
+  /** 과목·회차 편집 대상 학생 */
+  const [enrollTarget, setEnrollTarget] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   /* 명단에 있는 사람이 판에 배정돼 있는지 검사 */
@@ -172,27 +176,14 @@ export function RosterModal({ data, update, replaceAll, onClose }: RosterModalPr
                   onChange={(e) => patchStudent(s.id, { grade: e.target.value })}
                   style={{ width: 60 }}
                 />
-                <input
-                  value={s.defaultSubject ?? ''}
-                  placeholder="기본 과목"
-                  onChange={(e) => patchStudent(s.id, { defaultSubject: e.target.value })}
-                  style={{ width: 80 }}
-                />
-                <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  주
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={s.weeklyCount ?? ''}
-                    placeholder="-"
-                    onChange={(e) =>
-                      patchStudent(s.id, { weeklyCount: e.target.value === '' ? undefined : Number(e.target.value) })
-                    }
-                    style={{ width: 50 }}
-                  />
-                  회
-                </label>
+                <button onClick={() => setEnrollTarget(s.id)}>
+                  {studentEnrollments(s).filter((e) => e.weeklyCount > 0).length > 0
+                    ? studentEnrollments(s)
+                        .filter((e) => e.weeklyCount > 0)
+                        .map((e) => `${e.subject || '과목?'} ${e.weeklyCount}회`)
+                        .join(' · ')
+                    : '과목·회차 입력'}
+                </button>
                 <button onClick={() => setAvailTarget({ kind: 'student', id: s.id })}>
                   시간 {s.availability?.length ?? 0}칸
                 </button>
@@ -215,8 +206,7 @@ export function RosterModal({ data, update, replaceAll, onClose }: RosterModalPr
           </div>
           <button className="primary" onClick={addStudent}>+ 학생 추가</button>
           <p className="hint">
-            '주 n회'는 등록 회차, '시간'은 올 수 있는 시간대입니다.
-            둘 다 입력된 학생만 자동 배치 대상이 됩니다.
+            과목·회차(예: 수학 3회 + 영어 1회)와 가능 시간이 모두 입력된 학생만 자동 배치 대상이 됩니다.
           </p>
         </>
       )}
@@ -355,6 +345,24 @@ export function RosterModal({ data, update, replaceAll, onClose }: RosterModalPr
           </div>
         </>
       )}
+      {enrollTarget && (() => {
+        const student = data.students.find((x) => x.id === enrollTarget);
+        if (!student) return null;
+        return (
+          <EnrollmentEditor
+            student={student}
+            onChange={(next) =>
+              patchStudent(enrollTarget, {
+                enrollments: next,
+                // 옛 필드는 혼동을 막기 위해 함께 비운다.
+                defaultSubject: undefined,
+                weeklyCount: undefined,
+              })
+            }
+            onClose={() => setEnrollTarget(null)}
+          />
+        );
+      })()}
       {prefTarget && (() => {
         const student = data.students.find((x) => x.id === prefTarget);
         if (!student) return null;

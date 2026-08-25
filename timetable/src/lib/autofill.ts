@@ -6,16 +6,17 @@ import {
   BLOCK_NAMES,
   MAX_SESSIONS_PER_DAY,
   slotKey,
+  studentEnrollments,
   teacherSubjects,
 } from '../types';
-import { studentWeekCounts } from './board';
+import { studentSubjectWeekCounts } from './board';
 
 export interface FillResult {
   week: WeekBoard;
   /** 이번 실행으로 새로 배치한 세션 수 */
   placed: number;
-  /** 회차를 못 채운 학생들 */
-  unplaced: { student: Student; missing: number; reason: string }[];
+  /** 회차를 못 채운 학생·과목들 */
+  unplaced: { student: Student; subject: string; missing: number; reason: string }[];
   /** 자동 배치 대상에서 빠진 학생들 (회차나 가능 시간 미입력) */
   skipped: { student: Student; reason: string }[];
 }
@@ -41,27 +42,41 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
   const activeTeachers = data.teachers.filter((t) => !t.archived);
   const teacherById = new Map(activeTeachers.map((t) => [t.id, t]));
 
+  /** 배치 작업 하나 = 학생 한 명의 한 과목 등록 */
+  interface Task {
+    st: Student;
+    subject: string;
+  }
+
   const skipped: FillResult['skipped'] = [];
-  const targets: Student[] = [];
+  const tasks: Task[] = [];
   for (const st of data.students) {
     if (st.archived) continue;
-    const hasCount = (st.weeklyCount ?? 0) > 0;
+    const enrollments = studentEnrollments(st).filter((e) => e.weeklyCount > 0);
     const hasAvail = (st.availability?.length ?? 0) > 0;
-    if (hasCount && hasAvail) targets.push(st);
-    else if (hasCount || hasAvail) {
+    if (enrollments.length > 0 && hasAvail) {
+      for (const e of enrollments) tasks.push({ st, subject: e.subject.trim() });
+    } else if (enrollments.length > 0 || hasAvail) {
       skipped.push({
         student: st,
-        reason: hasCount ? '가능 시간이 입력되지 않음' : '주 회차가 입력되지 않음',
+        reason: enrollments.length > 0 ? '가능 시간이 입력되지 않음' : '과목·회차가 입력되지 않음',
       });
     }
   }
 
-  const counts = studentWeekCounts(draft);
-  const needs = new Map<string, number>(
-    targets.map((st) => [st.id, Math.max(0, (st.weeklyCount ?? 0) - (counts.get(st.id) ?? 0))]),
-  );
+  // 과목별로 이미 배정된 수를 세서 남은 회차를 구한다.
+  // 과목이 비워진 좌석은 그 학생의 첫 번째 등록 과목으로 간주한다.
+  const subjectCounts = studentSubjectWeekCounts(draft);
+  const taskKey = (t: Task) => `${t.st.id}|${t.subject}`;
+  const needs = new Map<string, number>();
+  for (const t of tasks) {
+    const enrollment = studentEnrollments(t.st).find((e) => e.subject.trim() === t.subject);
+    let used = subjectCounts.get(taskKey(t)) ?? 0;
+    const firstSubject = studentEnrollments(t.st)[0]?.subject.trim() ?? '';
+    if (t.subject === firstSubject) used += subjectCounts.get(`${t.st.id}|`) ?? 0;
+    needs.set(taskKey(t), Math.max(0, (enrollment?.weeklyCount ?? 0) - used));
+  }
 
-  const subjectOf = (st: Student) => st.defaultSubject?.trim() ?? '';
   const subjectMatches = (t: Teacher, subject: string) => {
     const list = teacherSubjects(t);
     return list.length === 0 || subject === '' || list.includes(subject);
@@ -71,15 +86,20 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
       .filter(([, level]) => level === 'must')
       .map(([id]) => id);
   /**
-   * 이 강사에게 이 학생을 붙여도 되는가.
-   * 지정 강사가 있으면 그 강사만 허용. 지정·선호 관계는 과목 검사를 건너뛴다
-   * (관계를 직접 지정했다면 과목 추론보다 우선한다).
+   * 이 강사에게 이 학생의 이 과목 수업을 붙여도 되는가.
+   * 과목은 항상 맞아야 한다 (복수 과목 학생의 영어 수업이 수학 지정 강사에게
+   * 가는 것을 막기 위해). 지정 강사 중 이 과목을 가르치는 강사가 있으면
+   * 그 강사만 허용하고, 아무도 이 과목을 못 가르치면 그 과목에 한해
+   * 지정을 무시한다 (지정이 다른 과목용이었다고 본다).
    */
-  const eligible = (t: Teacher, st: Student) => {
-    const must = mustIdsOf(st);
-    if (must.length > 0) return must.includes(t.id);
-    if (st.teacherPrefs?.[t.id]) return true;
-    return subjectMatches(t, subjectOf(st));
+  const eligible = (t: Teacher, st: Student, subject: string) => {
+    if (!subjectMatches(t, subject)) return false;
+    const mustForSubject = mustIdsOf(st).filter((id) => {
+      const mt = teacherById.get(id);
+      return mt && subjectMatches(mt, subject);
+    });
+    if (mustForSubject.length > 0) return mustForSubject.includes(t.id);
+    return true;
   };
   /**
    * 점수 가중치 설계 (큰 것이 우선):
@@ -129,8 +149,9 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
     score: number;
   }
 
-  /** 한 학생의 다음 세션을 놓을 최적 자리 찾기 */
-  function findSlot(st: Student): Candidate | null {
+  /** 한 작업(학생×과목)의 다음 세션을 놓을 최적 자리 찾기 */
+  function findSlot(task: Task): Candidate | null {
+    const { st, subject } = task;
     let best: Candidate | null = null;
 
     for (const key of st.availability ?? []) {
@@ -147,7 +168,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
         const group = block.groups[g];
         if (!group.teacherId) continue;
         const teacher = teacherById.get(group.teacherId);
-        if (!teacher || !eligible(teacher, st)) continue;
+        if (!teacher || !eligible(teacher, st, subject)) continue;
         if (!group.seats.some((s) => !s.studentId)) continue;
         const score = 10 + dayBonus + prefBonus(teacher, st);
         if (!best || score > best.score) best = { d, b, groupIndex: g, score };
@@ -161,7 +182,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
         const candidates = activeTeachers
           .filter(
             (t) =>
-              eligible(t, st) &&
+              eligible(t, st, subject) &&
               (t.availability ?? []).includes(slotKey(d, b)) &&
               !teacherBusy(d, b, t.id),
           )
@@ -177,8 +198,8 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
   }
 
   /** 못 놓은 이유 진단 */
-  function diagnose(st: Student): string {
-    const subject = subjectOf(st);
+  function diagnose(task: Task): string {
+    const { st, subject } = task;
     let sawFreeSeat = false;
     let allCapped = true;
     for (const key of st.availability ?? []) {
@@ -206,29 +227,34 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
   let guard = 0;
   while (progress && guard++ < 500) {
     progress = false;
-    // 라운드마다 한 명당 한 세션씩: 자리가 빠듯한(가능 슬롯 적은) 학생 먼저
-    const order = targets
-      .filter((st) => (needs.get(st.id) ?? 0) > 0)
-      .sort((a, b) => (a.availability?.length ?? 0) - (b.availability?.length ?? 0));
-    for (const st of order) {
-      if ((needs.get(st.id) ?? 0) <= 0) continue;
-      const slot = findSlot(st);
+    // 라운드마다 작업당 한 세션씩: 자리가 빠듯한(가능 슬롯 적은) 학생 먼저
+    const order = tasks
+      .filter((t) => (needs.get(taskKey(t)) ?? 0) > 0)
+      .sort((a, b) => (a.st.availability?.length ?? 0) - (b.st.availability?.length ?? 0));
+    for (const task of order) {
+      if ((needs.get(taskKey(task)) ?? 0) <= 0) continue;
+      const slot = findSlot(task);
       if (!slot) continue;
       const group = draft.days[slot.d].blocks[slot.b].groups[slot.groupIndex];
       if (slot.newTeacherId) group.teacherId = slot.newTeacherId;
       const seat = group.seats.find((s) => !s.studentId)!;
-      seat.studentId = st.id;
-      seat.subject = subjectOf(st) || undefined;
+      seat.studentId = task.st.id;
+      seat.subject = task.subject || undefined;
       seat.managerId = seat.managerId ?? defaultManagerId;
-      needs.set(st.id, (needs.get(st.id) ?? 0) - 1);
+      needs.set(taskKey(task), (needs.get(taskKey(task)) ?? 0) - 1);
       placed++;
       progress = true;
     }
   }
 
-  const unplaced = targets
-    .filter((st) => (needs.get(st.id) ?? 0) > 0)
-    .map((st) => ({ student: st, missing: needs.get(st.id)!, reason: diagnose(st) }));
+  const unplaced = tasks
+    .filter((t) => (needs.get(taskKey(t)) ?? 0) > 0)
+    .map((t) => ({
+      student: t.st,
+      subject: t.subject,
+      missing: needs.get(taskKey(t))!,
+      reason: diagnose(t),
+    }));
 
   return { week: draft, placed, unplaced, skipped };
 }

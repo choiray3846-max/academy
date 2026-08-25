@@ -1,4 +1,5 @@
-import type { Conflict, } from '../lib/board';
+import type { Conflict } from '../lib/board';
+import { studentEnrollments } from '../types';
 import type { DayBoard, Manager, SeatAssign, Student, Teacher } from '../types';
 import { BLOCK_NAMES, SEATS_PER_GROUP } from '../types';
 
@@ -103,7 +104,7 @@ export function DayGrid({
                       <td>
                         <input
                           value={seat.subject ?? ''}
-                          placeholder={student?.defaultSubject ?? ''}
+                          placeholder={student ? studentEnrollments(student)[0]?.subject ?? '' : ''}
                           onChange={(e) => onSetSeat(b, g, s, { subject: e.target.value })}
                           disabled={!seat.studentId}
                         />

@@ -22,12 +22,21 @@ export const BLOCK_NAMES = ['A', 'B', 'C'] as const;
 export const MAX_SESSIONS_PER_DAY = 2;
 export const DAY_LABELS = ['월', '화', '수', '목', '금', '토'] as const;
 
+/** 학생의 과목별 등록 (예: 수학 주3회, 영어 주1회) */
+export interface Enrollment {
+  subject: string;
+  weeklyCount: number;
+}
+
 export interface Student {
   id: ID;
   name: string;
   grade: string;          // 예: '중3', '고1'
-  defaultSubject?: string; // 배정할 때 기본으로 채울 과목
-  /** 주당 등록 회차 (회차제 관리·자동 배치용). 없으면 집계만 표시 */
+  /** 과목별 등록 목록. 자동 배치·회차 집계의 기준이다. */
+  enrollments?: Enrollment[];
+  /** @deprecated enrollments로 대체됨. 옛 데이터 호환용으로만 남아 있다. */
+  defaultSubject?: string;
+  /** @deprecated enrollments로 대체됨. */
   weeklyCount?: number;
   /** 올 수 있는 시간대. '요일-교시' 키 목록 (예: '0-1' = 월 B교시) */
   availability?: string[];
@@ -48,6 +57,15 @@ export interface Teacher {
   /** 근무 가능한 시간대. '요일-교시' 키 목록 */
   availability?: string[];
   archived?: boolean;
+}
+
+/** 학생의 등록 목록. 옛 데이터(defaultSubject/weeklyCount)도 변환해서 돌려준다. */
+export function studentEnrollments(s: Student): Enrollment[] {
+  if (s.enrollments && s.enrollments.length > 0) return s.enrollments;
+  if (s.weeklyCount || s.defaultSubject) {
+    return [{ subject: s.defaultSubject?.trim() ?? '', weeklyCount: s.weeklyCount ?? 0 }];
+  }
+  return [];
 }
 
 /** 강사 과목 문자열을 과목 목록으로 (쉼표·가운뎃점·빗금 구분) */

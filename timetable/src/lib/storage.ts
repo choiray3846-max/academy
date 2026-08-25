@@ -1,4 +1,4 @@
-import type { TimetableData } from '../types';
+import type { Student, TimetableData } from '../types';
 
 const KEY = 'academy-timetable/data';
 export const SCHEMA_VERSION = 1;
@@ -19,11 +19,23 @@ function defaults(): TimetableData {
   };
 }
 
+/** 옛 단일 과목 필드(defaultSubject/weeklyCount)를 enrollments로 바꾼다. */
+function migrateStudent(s: Student): Student {
+  if (s.enrollments && s.enrollments.length > 0) return s;
+  if (s.weeklyCount || s.defaultSubject) {
+    return {
+      ...s,
+      enrollments: [{ subject: s.defaultSubject?.trim() ?? '', weeklyCount: s.weeklyCount ?? 0 }],
+    };
+  }
+  return s;
+}
+
 function migrate(raw: Partial<TimetableData>): TimetableData {
   const base = defaults();
   return {
     version: SCHEMA_VERSION,
-    students: raw.students ?? [],
+    students: (raw.students ?? []).map(migrateStudent),
     teachers: raw.teachers ?? [],
     managers: raw.managers ?? [],
     settings: { ...base.settings, ...(raw.settings ?? {}) },

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SeatAssign, TimetableData, WeekBoard } from './types';
-import { DAY_LABELS, MAX_SESSIONS_PER_DAY } from './types';
+import { DAY_LABELS, MAX_SESSIONS_PER_DAY, studentEnrollments, teacherSubjects } from './types';
 import { addDays, mondayOf, shortDate, today, weekTitle } from './lib/date';
 import { loadData, saveData } from './lib/storage';
 import {
   emptyWeek,
   findConflicts,
   isWeekEmpty,
+  studentSubjectWeekCounts,
   studentWeekCounts,
   weekOf,
 } from './lib/board';
@@ -65,7 +66,8 @@ export default function App() {
       // 학생을 새로 고르면 기본 과목·기본 관리 담당을 채워 준다.
       if (patch.studentId) {
         const student = data.students.find((s) => s.id === patch.studentId);
-        if (!seat.subject && student?.defaultSubject) seat.subject = student.defaultSubject;
+        const firstSubject = student ? studentEnrollments(student)[0]?.subject : undefined;
+        if (!seat.subject && firstSubject) seat.subject = firstSubject;
         if (!seat.managerId && data.settings.defaultManagerId) seat.managerId = data.settings.defaultManagerId;
       }
       if (patch.studentId === undefined && 'studentId' in patch) {
@@ -102,11 +104,14 @@ export default function App() {
 
   function runAutoFill() {
     const targets = data.students.filter(
-      (s) => !s.archived && (s.weeklyCount ?? 0) > 0 && (s.availability?.length ?? 0) > 0,
+      (s) =>
+        !s.archived &&
+        studentEnrollments(s).some((e) => e.weeklyCount > 0) &&
+        (s.availability?.length ?? 0) > 0,
     );
     if (targets.length === 0) {
       window.alert(
-        '자동 배치할 학생이 없습니다.\n[명단·설정 → 학생]에서 주 회차와 가능 시간을 입력해 주세요.\n강사도 [시간] 버튼으로 근무 가능 시간을 입력해야 합니다.',
+        '자동 배치할 학생이 없습니다.\n[명단·설정 → 학생]에서 과목·회차와 가능 시간을 입력해 주세요.\n강사도 [시간] 버튼으로 근무 가능 시간을 입력해야 합니다.',
       );
       return;
     }
@@ -134,9 +139,19 @@ export default function App() {
             if (!seat.studentId) continue;
             const st = studentById.get(seat.studentId);
             if (!st) continue;
+            // 지정 검사는 좌석의 과목 기준: 그 과목을 가르칠 수 있는 지정 강사가
+            // 있을 때만 위반을 따진다 (수학 지정이 영어 수업까지 묶지 않도록).
+            const seatSubject = seat.subject?.trim() ?? '';
+            const canTeach = (id: string) => {
+              const mt = teacherById.get(id);
+              if (!mt) return false;
+              const list = teacherSubjects(mt);
+              return list.length === 0 || seatSubject === '' || list.includes(seatSubject);
+            };
             const mustIds = Object.entries(st.teacherPrefs ?? {})
               .filter(([, v]) => v === 'must')
-              .map(([id]) => id);
+              .map(([id]) => id)
+              .filter(canTeach);
             if (mustIds.length > 0 && !mustIds.includes(group.teacherId)) {
               out.push({
                 studentName: st.name,
@@ -177,10 +192,24 @@ export default function App() {
   const dayConflicts = conflicts.filter((c) => c.dayIndex === dayIndex);
   const times = dayIndex === 5 ? data.settings.saturdayTimes : data.settings.weekdayTimes;
 
-  /* 배정 현황: 이번 주에 한 번이라도 배정된 학생 + 회차 등록된 학생 */
+  /* 배정 현황: 학생×과목 단위. 이번 주에 배정됐거나 회차가 등록된 항목만 */
+  const subjectCounts = useMemo(() => studentSubjectWeekCounts(week), [week]);
   const summary = data.students
-    .filter((s) => !s.archived && (counts.has(s.id) || s.weeklyCount))
-    .map((s) => ({ student: s, count: counts.get(s.id) ?? 0 }))
+    .filter((s) => !s.archived && (counts.has(s.id) || studentEnrollments(s).length > 0))
+    .flatMap((s) => {
+      const enrollments = studentEnrollments(s).filter((e) => e.weeklyCount > 0);
+      if (enrollments.length === 0) {
+        return [{ student: s, subject: '', count: counts.get(s.id) ?? 0, target: undefined as number | undefined }];
+      }
+      const firstSubject = enrollments[0].subject.trim();
+      return enrollments.map((e) => {
+        const subj = e.subject.trim();
+        let count = subjectCounts.get(`${s.id}|${subj}`) ?? 0;
+        // 과목이 비워진 좌석은 첫 번째 등록 과목으로 친다.
+        if (subj === firstSubject) count += subjectCounts.get(`${s.id}|`) ?? 0;
+        return { student: s, subject: subj, count, target: e.weeklyCount as number | undefined };
+      });
+    })
     .sort((a, b) => a.student.name.localeCompare(b.student.name, 'ko'));
 
   const conflictPeople = (list: typeof conflicts) =>
@@ -289,13 +318,15 @@ export default function App() {
               <p className="hint">아직 배정된 학생이 없습니다. [명단·설정]에서 학생·강사를 등록한 뒤 좌석에 배정해 보세요.</p>
             ) : (
               <ul className="count-list">
-                {summary.map(({ student, count }) => {
-                  const target = student.weeklyCount;
+                {summary.map(({ student, subject, count, target }) => {
                   const state =
                     target == null ? '' : count < target ? 'under' : count > target ? 'over' : 'ok';
                   return (
-                    <li key={student.id} className={state}>
-                      <span>{student.name} <small>({student.grade})</small></span>
+                    <li key={`${student.id}|${subject}`} className={state}>
+                      <span>
+                        {student.name} <small>({student.grade})</small>
+                        {subject && <small className="subj"> {subject}</small>}
+                      </span>
                       <b>
                         {count}
                         {target != null && ` / ${target}`}회
@@ -305,7 +336,7 @@ export default function App() {
                 })}
               </ul>
             )}
-            {summary.some(({ student }) => student.weeklyCount != null) && (
+            {summary.some(({ target }) => target != null) && (
               <p className="hint">
                 <span className="dot-under" /> 회차 미달 · <span className="dot-ok" /> 충족 · <span className="dot-over" /> 초과
               </p>
@@ -355,9 +386,9 @@ export default function App() {
             <>
               <h4 style={{ margin: '6px 0 0' }}>회차를 못 채운 학생</h4>
               <ul className="fill-list">
-                {fillResult.unplaced.map(({ student, missing, reason }) => (
-                  <li key={student.id}>
-                    <b>{student.name}</b> ({student.grade}) — {missing}회 부족 · {reason}
+                {fillResult.unplaced.map(({ student, subject, missing, reason }) => (
+                  <li key={`${student.id}|${subject}`}>
+                    <b>{student.name}</b> ({student.grade}){subject && ` ${subject}`} — {missing}회 부족 · {reason}
                   </li>
                 ))}
               </ul>
