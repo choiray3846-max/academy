@@ -50,7 +50,8 @@ type OpenModal =
   | { type: 'consult'; initial?: Consultation };
 
 export default function App() {
-  const { data, update, replaceAll, session, setSession, saveError } = useAppStore();
+  const { data, update, replaceAll, session, setSession, saveError, syncCfg, syncStatus, changeSyncConfig } =
+    useAppStore();
 
   const [view, setView] = useState<ViewMode>('month');
   const [anchor, setAnchor] = useState<DateStr>(today());
@@ -207,6 +208,11 @@ export default function App() {
           {ROLE_LABEL[session.role]}
           {roleTag ? ` · ${roleTag}` : ''}
         </button>
+        {syncStatus !== 'off' && (
+          <span className={`sync-badge ${syncStatus}`} title="여러 컴퓨터 공유 상태">
+            {syncStatus === 'ok' ? '공유중 ✓' : syncStatus === 'syncing' ? '저장중…' : '공유 오류'}
+          </span>
+        )}
         <div className="spacer" />
         {import.meta.env.PROD && (
           <a className="app-link" href="./timetable/">시간표 열기 ↗</a>
@@ -314,6 +320,9 @@ export default function App() {
           data={data}
           update={update}
           replaceAll={replaceAll}
+          syncCfg={syncCfg}
+          syncStatus={syncStatus}
+          onChangeSyncConfig={changeSyncConfig}
           onClose={() => setModal({ type: 'none' })}
         />
       )}
