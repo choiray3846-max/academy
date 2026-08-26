@@ -174,6 +174,12 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
   /** 튜터가 하루에 맡길 기본 최대 교시 수 (대안이 없으면 초과 허용) */
   const TEACHER_SOFT_MAX_PER_DAY = 2;
 
+  /**
+   * 새 그룹을 열 때 채우는 자리 순서 (0부터 시작하는 그룹 번호).
+   * 좌석 10~12(그룹4) → 4~6(그룹2) → 1~3(그룹1) → 7~9(그룹3) 순.
+   */
+  const GROUP_FILL_ORDER = [3, 1, 0, 2];
+
   /** 이 튜터가 그 날 맡고 있는 교시 수 */
   function teacherDayBlocks(d: number, teacherId: string): number {
     return draft.days[d].blocks.filter((blk) => blk.groups.some((g) => g.teacherId === teacherId)).length;
@@ -280,8 +286,10 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
             // 모든 튜터가 한 번씩 배정된 뒤에는 두 타임 규칙이 작동한다.
             const secondTimeBonus =
               teacherWeekLoad(teacher.id) === 0 ? 3 : dayBlocksNow === 1 ? 2 : 0;
-            // 그룹 자리: 튜터가 그날 이미 쓰는 자리(그룹 번호)가 비어 있으면 같은 자리로
-            let groupIndex = emptyIndices[0];
+            // 그룹 자리: 기본은 채움 순서(10~12 → 4~6 → 1~3 → 7~9)를 따르고,
+            let groupIndex =
+              GROUP_FILL_ORDER.find((i) => emptyIndices.includes(i)) ?? emptyIndices[0];
+            // 튜터가 그날 이미 쓰는 자리(그룹 번호)가 비어 있으면 그 자리가 우선.
             if (dayBlocksNow > 0) {
               for (const blk of draft.days[d].blocks) {
                 const gi = blk.groups.findIndex((g2) => g2.teacherId === teacher.id);
