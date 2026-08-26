@@ -20,6 +20,8 @@ export interface FillResult {
   unplaced: { student: Student; subject: string; missing: number; reason: string }[];
   /** 자동 배치 대상에서 빠진 학생들 (회차나 가능 시간 미입력) */
   skipped: { student: Student; reason: string }[];
+  /** 이번 주에 수업이 하나도 배정되지 않은 튜터들 */
+  idleTeachers: { teacher: Teacher; reason: string }[];
 }
 
 /**
@@ -184,6 +186,25 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
     return n;
   }
 
+  /** 그 요일에 배정된 총 학생 수 (요일 균형용) */
+  function dayAssignments(d: number): number {
+    let n = 0;
+    for (const block of draft.days[d].blocks) {
+      for (const group of block.groups) {
+        n += group.seats.filter((x) => x.studentId).length;
+      }
+    }
+    return n;
+  }
+
+  /**
+   * 요일 균형 감점: 이미 배정이 많은 요일일수록 점수를 깎아서
+   * 수업이 특정 요일(특히 월요일)에 몰리지 않게 한다.
+   */
+  function dayBalancePenalty(d: number): number {
+    return -Math.min(8, Math.floor(dayAssignments(d) / 2));
+  }
+
   interface Candidate {
     d: number;
     b: number;
@@ -205,7 +226,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
       if (studentDayCount(d, st.id) >= MAX_SESSIONS_PER_DAY) continue; // 하루 최대 횟수 제한
 
       const block = draft.days[d].blocks[b];
-      const dayBonus = spreadScore(d, st.id);
+      const dayBonus = spreadScore(d, st.id) + dayBalancePenalty(d);
 
       // 1순위: 이미 열린 그룹(배치 가능한 강사)의 빈 좌석. 선호·지정 강사면 가산점.
       // 학생이 1명뿐인 그룹에는 짝짓기 가산점을 줘서 '튜터당 2명 이상'을 유도한다.
@@ -246,6 +267,8 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
           pool.sort(
             (a, c) =>
               prefBonus(c, st, subject) - prefBonus(a, st, subject) ||
+              // 이번 주 배정이 없는 튜터를 최우선으로 (노는 튜터 방지)
+              (teacherWeekLoad(c.id) === 0 ? 1 : 0) - (teacherWeekLoad(a.id) === 0 ? 1 : 0) ||
               (teacherDayBlocks(d, c.id) === 1 ? 1 : 0) - (teacherDayBlocks(d, a.id) === 1 ? 1 : 0) ||
               teacherWeekLoad(a.id) - teacherWeekLoad(c.id),
           );
@@ -253,8 +276,10 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
           if (teacher) {
             const dayBlocksNow = teacherDayBlocks(d, teacher.id);
             const overCap = dayBlocksNow >= TEACHER_SOFT_MAX_PER_DAY;
-            // 그날 두 번째 타임이 되는 배치는 가산점 (한 번 오면 두 타임)
-            const secondTimeBonus = dayBlocksNow === 1 ? 2 : 0;
+            // 이번 주 첫 배정이 되는 튜터(3점)가 두 타임 몰아주기(2점)보다 우선.
+            // 모든 튜터가 한 번씩 배정된 뒤에는 두 타임 규칙이 작동한다.
+            const secondTimeBonus =
+              teacherWeekLoad(teacher.id) === 0 ? 3 : dayBlocksNow === 1 ? 2 : 0;
             // 그룹 자리: 튜터가 그날 이미 쓰는 자리(그룹 번호)가 비어 있으면 같은 자리로
             let groupIndex = emptyIndices[0];
             if (dayBlocksNow > 0) {
@@ -459,7 +484,18 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
       reason: diagnose(t),
     }));
 
-  return { week: draft, placed, unplaced, skipped };
+  // 이번 주 배정이 하나도 없는 튜터 확인 (손 배치 포함 전체 판 기준)
+  const idleTeachers = activeTeachers
+    .filter((t) => teacherWeekLoad(t.id) === 0)
+    .map((t) => ({
+      teacher: t,
+      reason:
+        (t.availability?.length ?? 0) === 0
+          ? '근무 가능 시간이 입력되지 않았습니다'
+          : '가능 시간에 맡길 학생이 없었습니다 (학생 수요·과목·시간 확인)',
+    }));
+
+  return { week: draft, placed, unplaced, skipped, idleTeachers };
 }
 
 /** 슬롯 키를 '월 B' 같은 사람이 읽는 이름으로 */

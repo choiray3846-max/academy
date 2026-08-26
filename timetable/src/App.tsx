@@ -569,6 +569,18 @@ export default function App() {
               </ul>
             </>
           )}
+          {fillResult.idleTeachers.length > 0 && (
+            <>
+              <h4 style={{ margin: '6px 0 0', color: 'var(--warn)' }}>⚠ 이번 주 배정이 없는 튜터</h4>
+              <ul className="fill-list">
+                {fillResult.idleTeachers.map(({ teacher, reason }) => (
+                  <li key={teacher.id}>
+                    <b>{teacher.name}</b>{teacher.subject ? ` (${teacher.subject})` : ''} — {reason}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {fillResult.skipped.length > 0 && (
             <>
               <h4 style={{ margin: '6px 0 0' }}>자동 배치에서 빠진 학생</h4>
