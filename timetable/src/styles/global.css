@@ -241,7 +241,7 @@ td.dup select { border-color: var(--danger); background: var(--danger-soft); }
 .wp-block-name { font-weight: 800; font-size: 13px; }
 .wp-block-time { font-size: 10px; color: var(--text-2); white-space: pre-line; }
 
-.wp-t-cell { text-align: center; vertical-align: middle; width: 52px; }
+.wp-t-cell { text-align: center; vertical-align: middle; width: 52px; min-width: 52px; }
 .wp-t-cell.filled { background: #fff9c9; font-weight: 700; }
 .wp-group-start td { border-top: 2px solid #b9bfc7; }
 .wp-name { font-weight: 600; min-width: 56px; }
@@ -428,3 +428,52 @@ td.dup select { border-color: var(--danger); background: var(--danger-soft); }
   padding-bottom: 4px;
 }
 .pref-must-note { color: var(--warn); font-weight: 600; font-size: 12px; }
+
+/* ----- 주간 통계 바 ----- */
+.week-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.week-stats b { color: var(--accent); }
+.week-stats .hint-inline { margin-left: auto; font-size: 11.5px; color: var(--text-3); }
+
+.side-totals {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.side-totals b { color: var(--accent); }
+
+/* 주간 전체 편집용 선택 상자: 표 안에서 글자처럼 보이게 */
+.wp-select {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  padding: 1px 0;
+  text-align: center;
+  text-align-last: center;
+  cursor: pointer;
+  color: inherit;
+}
+.wp-select:hover { background: var(--accent-soft); border-radius: 4px; }
+.wp-select:focus { outline: 1px solid var(--accent); border-radius: 4px; }
+
+@media print {
+  .week-stats { display: none; }
+}
+
+/* 주간 전체 편집: 선택 상자가 좁은 칸에서 찌그러지지 않게 */
+.wp-t-cell .wp-select { min-width: 50px; font-weight: 700; }
+.wp-name .wp-select { min-width: 72px; text-align: left; text-align-last: left; }
+.wp-name { min-width: 80px; }

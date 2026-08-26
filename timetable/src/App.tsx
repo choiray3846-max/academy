@@ -146,6 +146,52 @@ export default function App() {
   const conflicts = useMemo(() => findConflicts(week), [week]);
   const counts = useMemo(() => studentWeekCounts(week), [week]);
 
+  /** 이번 주 통계: 총 배정 횟수, 수업(강사 배정 그룹) 수, 튜터당 평균 학생 수 */
+  const weekStats = useMemo(() => {
+    let totalAssignments = 0;
+    let groupCount = 0;
+    let seatsInTaughtGroups = 0;
+    for (const day of week.days) {
+      for (const block of day.blocks) {
+        for (const group of block.groups) {
+          const n = group.seats.filter((x) => x.studentId).length;
+          totalAssignments += n;
+          if (group.teacherId) {
+            groupCount++;
+            seatsInTaughtGroups += n;
+          }
+        }
+      }
+    }
+    const avg = groupCount > 0 ? seatsInTaughtGroups / groupCount : 0;
+    return { totalAssignments, groupCount, avg };
+  }, [week]);
+
+  /** 주간 전체 보기에서: 특정 요일의 강사 배정 */
+  function setTeacherAt(d: number, b: number, g: number, teacherId: string | undefined) {
+    updateWeek((draft) => {
+      draft.days[d].blocks[b].groups[g].teacherId = teacherId;
+    });
+  }
+
+  /** 주간 전체 보기에서: 특정 요일의 좌석 학생 배정 (과목·관리 담당 자동 채움) */
+  function setStudentAt(d: number, b: number, g: number, seatIndex: number, studentId: string | undefined) {
+    updateWeek((draft) => {
+      const seat = draft.days[d].blocks[b].groups[g].seats[seatIndex];
+      if (!studentId) {
+        seat.studentId = undefined;
+        seat.subject = undefined;
+        seat.managerId = undefined;
+        return;
+      }
+      seat.studentId = studentId;
+      const student = data.students.find((x) => x.id === studentId);
+      const firstSubject = student ? studentEnrollments(student)[0]?.subject : undefined;
+      if (!seat.subject && firstSubject) seat.subject = firstSubject;
+      if (!seat.managerId && data.settings.defaultManagerId) seat.managerId = data.settings.defaultManagerId;
+    });
+  }
+
   /** 현재 주 판을 수정한다. 판이 없으면 빈 판에서 시작한다. */
   function updateWeek(mutator: (draft: WeekBoard) => void) {
     update((prev) => {
@@ -457,10 +503,20 @@ export default function App() {
                 <span className="dot-under" /> 회차 미달 · <span className="dot-ok" /> 충족 · <span className="dot-over" /> 초과
               </p>
             )}
+            <div className="side-totals">
+              이번 주 합계 <b>{weekStats.totalAssignments}회</b> · 수업 <b>{weekStats.groupCount}개</b> · 튜터당 평균{' '}
+              <b>{weekStats.avg.toFixed(1)}명</b>
+            </div>
           </aside>
         </div>
       ) : (
         <div className="week-wrap">
+          <div className="week-stats">
+            <span>총 배정 <b>{weekStats.totalAssignments}회</b></span>
+            <span>수업(그룹) <b>{weekStats.groupCount}개</b></span>
+            <span>튜터당 평균 <b>{weekStats.avg.toFixed(1)}명</b></span>
+            <span className="hint-inline">강사·학생 칸을 눌러 바로 고칠 수 있습니다. 과목·관리 담당 수정은 [하루 편집]에서.</span>
+          </div>
           <WeekPrint
             week={week}
             weekdayTimes={data.settings.weekdayTimes}
@@ -468,6 +524,9 @@ export default function App() {
             students={data.students}
             teachers={data.teachers}
             managers={data.managers}
+            editable
+            onSetTeacher={setTeacherAt}
+            onSetStudent={setStudentAt}
           />
         </div>
       )}
