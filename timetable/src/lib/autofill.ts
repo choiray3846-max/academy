@@ -226,34 +226,51 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
       }
 
       // 2순위: 빈 그룹을 새로 열기.
-      // 강사 선택: 선호·지정 우선 → 하루 2교시 미만인 튜터 우선 →
-      // 이번 주 수업이 적은 튜터 우선 (모든 튜터를 고르게 활용).
-      for (let g = 0; g < block.groups.length; g++) {
-        const group = block.groups[g];
-        if (group.teacherId) continue;
-        if (!group.seats.some((s) => !s.studentId)) continue;
-        const all = activeTeachers.filter(
-          (t) =>
-            eligible(t, st, subject) &&
-            (t.availability ?? []).includes(slotKey(d, b)) &&
-            !teacherBusy(d, b, t.id),
-        );
-        // 하루 소프트 최대에 안 걸린 튜터를 먼저, 없으면 어쩔 수 없이 전체에서
-        const fresh = all.filter((t) => teacherDayBlocks(d, t.id) < TEACHER_SOFT_MAX_PER_DAY);
-        const pool = fresh.length > 0 ? fresh : all;
-        pool.sort(
-          (a, c) =>
-            prefBonus(c, st, subject) - prefBonus(a, st, subject) ||
-            teacherWeekLoad(a.id) - teacherWeekLoad(c.id),
-        );
-        const teacher = pool[0];
-        if (!teacher) continue;
-        // 하루 최대를 넘겨야 하는 자리는 점수를 낮춰서, 다른 슬롯에 여유 튜터가
-        // 있으면 그쪽이 이기게 한다.
-        const overCap = teacherDayBlocks(d, teacher.id) >= TEACHER_SOFT_MAX_PER_DAY;
-        const score = (overCap ? 2 : 5) + dayBonus + prefBonus(teacher, st, subject);
-        if (!best || score > best.score) best = { d, b, groupIndex: g, newTeacherId: teacher.id, score };
-        break; // 빈 그룹은 어느 것이든 같으므로 첫 번째만 본다
+      // 강사 선택: 선호·지정 우선 → 그날 이미 1교시 하고 있는 튜터 우선
+      // (한 번 오면 두 타임) → 이번 주 수업이 적은 튜터 우선.
+      {
+        const emptyIndices = block.groups
+          .map((group, g) => ({ group, g }))
+          .filter((x) => !x.group.teacherId && x.group.seats.some((seat) => !seat.studentId))
+          .map((x) => x.g);
+        if (emptyIndices.length > 0) {
+          const all = activeTeachers.filter(
+            (t) =>
+              eligible(t, st, subject) &&
+              (t.availability ?? []).includes(slotKey(d, b)) &&
+              !teacherBusy(d, b, t.id),
+          );
+          // 하루 소프트 최대에 안 걸린 튜터를 먼저, 없으면 어쩔 수 없이 전체에서
+          const fresh = all.filter((t) => teacherDayBlocks(d, t.id) < TEACHER_SOFT_MAX_PER_DAY);
+          const pool = fresh.length > 0 ? fresh : all;
+          pool.sort(
+            (a, c) =>
+              prefBonus(c, st, subject) - prefBonus(a, st, subject) ||
+              (teacherDayBlocks(d, c.id) === 1 ? 1 : 0) - (teacherDayBlocks(d, a.id) === 1 ? 1 : 0) ||
+              teacherWeekLoad(a.id) - teacherWeekLoad(c.id),
+          );
+          const teacher = pool[0];
+          if (teacher) {
+            const dayBlocksNow = teacherDayBlocks(d, teacher.id);
+            const overCap = dayBlocksNow >= TEACHER_SOFT_MAX_PER_DAY;
+            // 그날 두 번째 타임이 되는 배치는 가산점 (한 번 오면 두 타임)
+            const secondTimeBonus = dayBlocksNow === 1 ? 2 : 0;
+            // 그룹 자리: 튜터가 그날 이미 쓰는 자리(그룹 번호)가 비어 있으면 같은 자리로
+            let groupIndex = emptyIndices[0];
+            if (dayBlocksNow > 0) {
+              for (const blk of draft.days[d].blocks) {
+                const gi = blk.groups.findIndex((g2) => g2.teacherId === teacher.id);
+                if (gi >= 0 && emptyIndices.includes(gi)) {
+                  groupIndex = gi;
+                  break;
+                }
+              }
+            }
+            const score =
+              (overCap ? 2 : 5 + secondTimeBonus) + dayBonus + prefBonus(teacher, st, subject);
+            if (!best || score > best.score) best = { d, b, groupIndex, newTeacherId: teacher.id, score };
+          }
+        }
       }
     }
     return best;
@@ -399,6 +416,36 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
           }
           mergedMoved = true;
         }
+      }
+    }
+  }
+
+  /**
+   * 자리 정렬: 같은 날 여러 교시를 맡은 튜터는 같은 그룹 번호(좌석 번호대)를
+   * 쓰도록, 교시 안에서 그룹 위치를 통째로 맞바꿔 맞춘다.
+   * 그룹 위치는 좌석 번호 표시에만 영향을 주므로 배치 규칙과는 무관하다.
+   */
+  for (let d = 0; d < DAYS_PER_WEEK; d++) {
+    /** 튜터별로 그날 처음 등장한 그룹 번호를 기준 자리로 삼는다 */
+    const canonical = new Map<string, number>();
+    for (let b = 0; b < BLOCKS_PER_DAY; b++) {
+      const groups = draft.days[d].blocks[b].groups;
+      const entries = groups
+        .map((g, i) => ({ g, i }))
+        .filter((x) => x.g.teacherId);
+      for (const { g } of entries) {
+        const teacherId = g.teacherId!;
+        const current = groups.indexOf(g);
+        const want = canonical.get(teacherId);
+        if (want === undefined) {
+          canonical.set(teacherId, current);
+          continue;
+        }
+        if (want === current) continue;
+        const occupant = groups[want];
+        // 그 자리를 이미 '자기 기준 자리'로 쓰는 다른 튜터가 있으면 건드리지 않는다.
+        if (occupant.teacherId && canonical.get(occupant.teacherId) === want) continue;
+        [groups[current], groups[want]] = [groups[want], groups[current]];
       }
     }
   }
