@@ -24,6 +24,8 @@ const COLS_PER_DAY = 7; // 교시, T, M, 학생명, 과목, 학년, 좌석
 const STRIDE = COLS_PER_DAY; // 요일 사이 빈 칸 없이 바로 이어 붙인다
 
 const BORDER_THIN = { style: 'thin' as const, color: { argb: 'FFB0B0B0' } };
+const BORDER_MEDIUM = { style: 'medium' as const, color: { argb: 'FF666666' } };
+const BORDER_THICK = { style: 'thick' as const, color: { argb: 'FF333333' } };
 const BORDERS = { top: BORDER_THIN, left: BORDER_THIN, bottom: BORDER_THIN, right: BORDER_THIN };
 
 const FILL_HEADER = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFE8ECF3' } };
@@ -84,14 +86,18 @@ export async function exportWeekToExcel(
       const startRow = 3 + b * SEATS_PER_BLOCK;
       const block = week.days[d].blocks[b];
 
-      // 교시 라벨 (12줄 병합)
-      ws.mergeCells(startRow, base, startRow + SEATS_PER_BLOCK - 1, base);
-      const label = ws.getCell(startRow, base);
-      label.value = `${BLOCK_NAMES[b]}\n${times[b] ?? ''}`;
-      label.font = { bold: true, size: 11 };
-      label.alignment = { horizontal: 'center', vertical: 'top', wrapText: true };
-      label.fill = FILL_BLOCK;
-      label.border = BORDERS;
+      // 교시 라벨: 병합하지 않고 첫 세 줄에 A / 시작시각 / 끝시각을 나눠 쓴다
+      // (기존 스프레드시트와 같은 모양)
+      const [timeStart, timeEnd] = (times[b] ?? '').split('~');
+      const labelValues = [BLOCK_NAMES[b], timeStart ?? '', timeEnd ?? ''];
+      for (let r = 0; r < SEATS_PER_BLOCK; r++) {
+        const cell = ws.getCell(startRow + r, base);
+        cell.value = labelValues[r] ?? '';
+        cell.font = { bold: true, size: r === 0 ? 12 : 10 };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.fill = FILL_BLOCK;
+        cell.border = BORDERS;
+      }
 
       for (let g = 0; g < GROUPS_PER_BLOCK; g++) {
         const group = block.groups[g];
@@ -127,6 +133,43 @@ export async function exportWeekToExcel(
             cell.border = BORDERS;
           });
         }
+      }
+    }
+  }
+
+  /**
+   * 구분선 정리: 교시(A/B/C) 사이는 굵은 선, 좌석 3개 그룹 사이는 중간 선,
+   * 요일 표의 좌우와 맨 아래는 중간 선으로 둘러서 분할이 또렷하게 보이게 한다.
+   */
+  const lastRow = 2 + BLOCKS_PER_DAY * SEATS_PER_BLOCK;
+  for (let d = 0; d < DAYS_PER_WEEK; d++) {
+    const base = d * STRIDE + 1;
+    for (let row = 2; row <= lastRow; row++) {
+      for (let c = 0; c < COLS_PER_DAY; c++) {
+        const seatIdx = row - 3; // 0부터: 블록 내 좌석 줄 번호 계산용
+        const inBody = row >= 3;
+        const blockStart = inBody && seatIdx % SEATS_PER_BLOCK === 0;
+        const groupStart = inBody && seatIdx % SEATS_PER_GROUP === 0;
+
+        // T열(c=1)은 3줄 병합이라 아래(슬레이브) 칸에 쓰면 대표 칸 테두리를
+        // 덮어써 버린다. 대표 줄에서만 병합 전체의 테두리를 한 번에 쓴다.
+        if (c === 1 && inBody) {
+          if (!groupStart) continue;
+          ws.getCell(row, base + c).border = {
+            top: blockStart ? BORDER_THICK : BORDER_MEDIUM,
+            bottom: row + SEATS_PER_GROUP - 1 === lastRow ? BORDER_MEDIUM : BORDER_MEDIUM,
+            left: BORDER_THIN,
+            right: BORDER_THIN,
+          };
+          continue;
+        }
+
+        ws.getCell(row, base + c).border = {
+          top: blockStart || row === 2 ? BORDER_THICK : groupStart ? BORDER_MEDIUM : BORDER_THIN,
+          bottom: row === lastRow ? BORDER_MEDIUM : BORDER_THIN,
+          left: c === 0 ? BORDER_MEDIUM : BORDER_THIN,
+          right: c === COLS_PER_DAY - 1 ? BORDER_MEDIUM : BORDER_THIN,
+        };
       }
     }
   }
