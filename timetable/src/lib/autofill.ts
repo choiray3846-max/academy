@@ -247,7 +247,9 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
         // 계열이 다르면 크게 감점: 정상적인 다른 자리(최소 점수 2)보다 항상
         // 낮아져서, 정말 다른 자리가 없을 때만 섞인다.
         const base = compatible ? 10 : -15;
-        const pairBonus = compatible ? (occupied === 1 ? 3 : occupied === 2 ? 2 : 0) : 0;
+        // 짝짓기 가산점을 퍼뜨리기 최대치(12)보다 크게 둬서, 1~2명 그룹 합류가
+        // 먼 요일에 1명짜리 새 그룹을 여는 것보다 항상 우선하게 한다.
+        const pairBonus = compatible ? (occupied === 1 ? 12 : occupied === 2 ? 11 : 0) : 0;
         const score = base + dayBonus + prefBonus(teacher, st, subject) + pairBonus;
         if (!best || score > best.score) best = { d, b, groupIndex: g, score };
       }
@@ -392,10 +394,11 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
    * 이번 실행에서 자동으로 놓은 좌석만 움직이고, 손 배치는 건드리지 않는다.
    */
   const studentById = new Map(data.students.map((st) => [st.id, st]));
-  let mergedMoved = true;
-  let mergeGuard = 0;
-  while (mergedMoved && mergeGuard++ < 100) {
-    mergedMoved = false;
+  function mergeSingles() {
+    let mergedMoved = true;
+    let mergeGuard = 0;
+    while (mergedMoved && mergeGuard++ < 100) {
+      mergedMoved = false;
     for (let d = 0; d < DAYS_PER_WEEK && !mergedMoved; d++) {
       for (let b = 0; b < BLOCKS_PER_DAY && !mergedMoved; b++) {
         const block = draft.days[d].blocks[b];
@@ -451,7 +454,101 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
         }
       }
     }
+    }
   }
+
+  /**
+   * '한 명 때문에 출근' 정리: 이번 주 수업이 이 교시 하나뿐인 튜터가
+   * 학생 1명만 맡고 있으면, 그 학생을 이미 일하고 있는 다른 튜터의
+   * 새 그룹으로 옮기고 이 그룹을 닫는다. (1명짜리 수업을 위해
+   * 튜터를 따로 부르는 일을 막는다. 손 배치는 건드리지 않는다.)
+   */
+  function rehomeLonelyTutors() {
+    let moved = true;
+    let guard2 = 0;
+    while (moved && guard2++ < 50) {
+      moved = false;
+      for (let d = 0; d < DAYS_PER_WEEK && !moved; d++) {
+        for (let b = 0; b < BLOCKS_PER_DAY && !moved; b++) {
+          const block = draft.days[d].blocks[b];
+          for (let g = 0; g < block.groups.length && !moved; g++) {
+            const group = block.groups[g];
+            if (!group.teacherId) continue;
+            if (teacherWeekLoad(group.teacherId) !== 1) continue; // 이 수업이 유일한 출근
+            const occupiedSeats = group.seats
+              .map((seat, index) => ({ seat, index }))
+              .filter((x) => x.seat.studentId);
+            if (occupiedSeats.length !== 1) continue;
+            const { seat, index: seatIndex } = occupiedSeats[0];
+            if (!placedKeys.has(`${d}-${b}-${g}-${seatIndex}`)) continue;
+            const st = studentById.get(seat.studentId!);
+            if (!st) continue;
+            const subject = seat.subject?.trim() ?? '';
+
+            // 옮길 곳: 이미 일하는(주 1교시 이상) 튜터의 새 그룹.
+            // 그날 1교시째인 튜터(두 타임 완성)를 우선한다.
+            let target: { d2: number; b2: number; g2: number; teacherId: string; score: number } | null = null;
+            for (const key of st.availability ?? []) {
+              const [d2, b2] = key.split('-').map(Number);
+              if (!(d2 >= 0 && d2 < DAYS_PER_WEEK && b2 >= 0 && b2 < BLOCKS_PER_DAY)) continue;
+              if (d2 === d && b2 === b) continue;
+              if (studentInBlock(d2, b2, st.id)) continue;
+              const removedSameDay = d2 === d ? 1 : 0;
+              if (studentDayCount(d2, st.id) - removedSameDay >= MAX_SESSIONS_PER_DAY) continue;
+              const block2 = draft.days[d2].blocks[b2];
+              const emptyIndices = block2.groups
+                .map((g2, i) => ({ g2, i }))
+                .filter((x) => !x.g2.teacherId && x.g2.seats.every((s2) => !s2.studentId))
+                .map((x) => x.i);
+              if (emptyIndices.length === 0) continue;
+              const candidates = activeTeachers.filter(
+                (t) =>
+                  t.id !== group.teacherId &&
+                  teacherWeekLoad(t.id) >= 1 &&
+                  teacherDayBlocks(d2, t.id) < TEACHER_SOFT_MAX_PER_DAY &&
+                  eligible(t, st, subject) &&
+                  (t.availability ?? []).includes(slotKey(d2, b2)) &&
+                  !teacherBusy(d2, b2, t.id),
+              );
+              for (const t of candidates) {
+                const score = (teacherDayBlocks(d2, t.id) === 1 ? 10 : 0) + prefBonus(t, st, subject);
+                if (!target || score > target.score) {
+                  let gi = GROUP_FILL_ORDER.find((i) => emptyIndices.includes(i)) ?? emptyIndices[0];
+                  for (const blk of draft.days[d2].blocks) {
+                    const idx = blk.groups.findIndex((g3) => g3.teacherId === t.id);
+                    if (idx >= 0 && emptyIndices.includes(idx)) {
+                      gi = idx;
+                      break;
+                    }
+                  }
+                  target = { d2, b2, g2: gi, teacherId: t.id, score };
+                }
+              }
+            }
+            if (!target) continue;
+
+            const dst = draft.days[target.d2].blocks[target.b2].groups[target.g2];
+            dst.teacherId = target.teacherId;
+            openedKeys.add(`${target.d2}-${target.b2}-${target.g2}`);
+            const freeIndex = dst.seats.findIndex((x) => !x.studentId);
+            dst.seats[freeIndex] = { ...seat };
+            group.seats[seatIndex] = {};
+            placedKeys.delete(`${d}-${b}-${g}-${seatIndex}`);
+            placedKeys.add(`${target.d2}-${target.b2}-${target.g2}-${freeIndex}`);
+            if (openedKeys.has(`${d}-${b}-${g}`)) {
+              group.teacherId = undefined;
+              openedKeys.delete(`${d}-${b}-${g}`);
+            }
+            moved = true;
+          }
+        }
+      }
+    }
+  }
+
+  mergeSingles();
+  rehomeLonelyTutors();
+  mergeSingles(); // 옮긴 뒤 새로 생긴 1명 그룹을 한 번 더 합쳐 본다
 
   /**
    * 자리 정렬: 같은 날 여러 교시를 맡은 튜터는 같은 그룹 번호(좌석 번호대)를
