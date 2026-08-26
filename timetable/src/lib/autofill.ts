@@ -551,6 +551,94 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
   mergeSingles(); // 옮긴 뒤 새로 생긴 1명 그룹을 한 번 더 합쳐 본다
 
   /**
+   * 튜터 재조정: 학생 배치는 그대로 두고 그룹의 담당 강사만 바꿔서
+   * (1) 배정이 없는 튜터에게 수업을 나눠 주고
+   * (2) '하루 한 타임만' 있는 날(외콤마)을 같은 날 두 타임으로 채운다.
+   * 3-1 같은 불균형이 2-2로 맞춰지는 효과. 이번 실행에서 자동으로
+   * 강사를 배정한 그룹만 바꾸며, 손으로 지정한 강사는 유지한다.
+   */
+  function canTakeOver(d: number, b: number, g: number, x: Teacher): boolean {
+    if (!openedKeys.has(`${d}-${b}-${g}`)) return false;
+    const group = draft.days[d].blocks[b].groups[g];
+    if (!group.teacherId || group.teacherId === x.id) return false;
+    if (!(x.availability ?? []).includes(slotKey(d, b))) return false;
+    if (teacherBusy(d, b, x.id)) return false;
+    if (teacherDayBlocks(d, x.id) >= TEACHER_SOFT_MAX_PER_DAY) return false;
+    for (const seat of group.seats) {
+      if (!seat.studentId) continue;
+      const st = studentById.get(seat.studentId);
+      if (!st || !eligible(x, st, seat.subject?.trim() ?? '')) return false;
+    }
+    return true;
+  }
+
+  function rebalanceTutors() {
+    let changed = true;
+    let guard3 = 0;
+    while (changed && guard3++ < 30) {
+      changed = false;
+
+      // (1) 미배정 튜터 구제: 가장 바쁜 튜터의 그룹 하나를 넘겨받는다.
+      for (const x of activeTeachers) {
+        if (teacherWeekLoad(x.id) > 0) continue;
+        if ((x.availability?.length ?? 0) === 0) continue;
+        let best: { d: number; b: number; g: number; score: number } | null = null;
+        for (let d = 0; d < DAYS_PER_WEEK; d++) {
+          for (let b = 0; b < BLOCKS_PER_DAY; b++) {
+            const block = draft.days[d].blocks[b];
+            for (let g = 0; g < block.groups.length; g++) {
+              const y = block.groups[g].teacherId;
+              if (!y || teacherWeekLoad(y) < 2) continue; // 주는 쪽도 최소 1개는 남아야
+              if (!canTakeOver(d, b, g, x)) continue;
+              const score =
+                (teacherWeekLoad(y) >= 3 ? 10 : 0) + (teacherDayBlocks(d, y) === 1 ? 5 : 0);
+              if (!best || score > best.score) best = { d, b, g, score };
+            }
+          }
+        }
+        if (best) {
+          draft.days[best.d].blocks[best.b].groups[best.g].teacherId = x.id;
+          changed = true;
+        }
+      }
+      if (changed) continue;
+
+      // (2) 외콤마 해소: 하루 한 타임뿐인 튜터는 같은 날의 다른 그룹을 넘겨받는다.
+      outer: for (const x of activeTeachers) {
+        if (teacherWeekLoad(x.id) === 0) continue;
+        for (let d = 0; d < DAYS_PER_WEEK; d++) {
+          if (teacherDayBlocks(d, x.id) !== 1) continue;
+          let best: { b: number; g: number; score: number } | null = null;
+          for (let b = 0; b < BLOCKS_PER_DAY; b++) {
+            const block = draft.days[d].blocks[b];
+            for (let g = 0; g < block.groups.length; g++) {
+              const y = block.groups[g].teacherId;
+              if (!y || y === x.id) continue;
+              if (!canTakeOver(d, b, g, x)) continue;
+              const yLoad = teacherWeekLoad(y);
+              const yDay = teacherDayBlocks(d, y);
+              // 넘겨줘도 되는 경우:
+              //  - y도 이 날이 외콤마고 다른 날 수업이 있음 (y의 외콤마도 함께 사라짐)
+              //  - 또는 y가 x보다 2교시 이상 많음 (3-1 → 2-2 균형)
+              const ok = (yDay === 1 && yLoad >= 2) || yLoad >= teacherWeekLoad(x.id) + 2;
+              if (!ok) continue;
+              const score = (yDay === 1 ? 10 : 0) + yLoad;
+              if (!best || score > best.score) best = { b, g, score };
+            }
+          }
+          if (best) {
+            draft.days[d].blocks[best.b].groups[best.g].teacherId = x.id;
+            changed = true;
+            break outer;
+          }
+        }
+      }
+    }
+  }
+
+  rebalanceTutors();
+
+  /**
    * 자리 정렬: 같은 날 여러 교시를 맡은 튜터는 같은 그룹 번호(좌석 번호대)를
    * 쓰도록, 교시 안에서 그룹 위치를 통째로 맞바꿔 맞춘다.
    * 그룹 위치는 좌석 번호 표시에만 영향을 주므로 배치 규칙과는 무관하다.
