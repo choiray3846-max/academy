@@ -1,6 +1,17 @@
 import { useMemo, useState } from 'react';
-import type { MonthStr, PayslipData, WorkEntry } from '../types';
-import { addDays, monthOf, shortDate, today, weekLabel } from '../lib/date';
+import type { DateStr, MonthStr, PayslipData, WorkEntry } from '../types';
+import {
+  addDays,
+  addMonths,
+  DOW_LABELS,
+  fromDateStr,
+  monthDates,
+  monthOf,
+  monthTitle,
+  shortDate,
+  today,
+  weekLabel,
+} from '../lib/date';
 import { calcEntry, parseTime, weekSummaries } from '../lib/payroll';
 import { fmtMinutes } from '../lib/format';
 import { newId } from '../lib/id';
@@ -15,7 +26,10 @@ interface Props {
 interface Draft {
   id?: string;
   employeeId: string;
-  date: string;
+  /** 선택한 날짜들. 새 기록은 여러 날, 수정은 한 날짜만 */
+  dates: DateStr[];
+  /** 달력에 표시 중인 달 */
+  calMonth: MonthStr;
   /** 'sessions' = 수업 횟수로 기록, 'times' = 출퇴근 시각으로 기록 */
   mode: 'sessions' | 'times';
   sessions: string;
@@ -71,7 +85,8 @@ export function WorkTab({ data, month, update }: Props) {
     const now = today();
     setDraft({
       employeeId: employeeId || employees[0].id,
-      date: monthOf(now) === month ? now : `${month}-01`,
+      dates: [monthOf(now) === month ? now : `${month}-01`],
+      calMonth: month,
       mode: 'sessions',
       sessions: '1',
       start: '18:00',
@@ -86,7 +101,8 @@ export function WorkTab({ data, month, update }: Props) {
     setDraft({
       id: e.id,
       employeeId: e.employeeId,
-      date: e.date,
+      dates: [e.date],
+      calMonth: monthOf(e.date),
       mode: e.sessions ? 'sessions' : 'times',
       sessions: String(e.sessions ?? 1),
       start: e.start ?? '18:00',
@@ -102,11 +118,11 @@ export function WorkTab({ data, month, update }: Props) {
       setError('직원을 선택하세요.');
       return;
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) {
-      setError('날짜를 선택하세요.');
+    if (draft.dates.length === 0) {
+      setError('달력에서 날짜를 하나 이상 선택하세요.');
       return;
     }
-    let fields: Omit<WorkEntry, 'id'>;
+    let fields: Omit<WorkEntry, 'id' | 'date'>;
     if (draft.mode === 'sessions') {
       const sessions = Number(draft.sessions);
       if (!Number.isInteger(sessions) || sessions < 1) {
@@ -116,7 +132,6 @@ export function WorkTab({ data, month, update }: Props) {
       // 수정으로 방식을 바꿀 수 있으니 다른 방식의 필드는 지운다
       fields = {
         employeeId: draft.employeeId,
-        date: draft.date,
         sessions,
         start: undefined,
         end: undefined,
@@ -135,14 +150,13 @@ export function WorkTab({ data, month, update }: Props) {
       }
       fields = {
         employeeId: draft.employeeId,
-        date: draft.date,
         sessions: undefined,
         start: draft.start,
         end: draft.end,
         breakMinutes,
         memo: draft.memo.trim() || undefined,
       };
-      if (calcEntry({ id: '', ...fields }).workMinutes === 0) {
+      if (calcEntry({ id: '', date: draft.dates[0], ...fields }).workMinutes === 0) {
         setError('근무시간이 0입니다. 시각과 휴게시간을 확인하세요.');
         return;
       }
@@ -150,10 +164,29 @@ export function WorkTab({ data, month, update }: Props) {
     update((prev) => ({
       ...prev,
       entries: draft.id
-        ? prev.entries.map((e) => (e.id === draft.id ? { ...e, ...fields } : e))
-        : [...prev.entries, { id: newId('ent-'), ...fields }],
+        ? prev.entries.map((e) =>
+            e.id === draft.id ? { ...e, ...fields, date: draft.dates[0] } : e,
+          )
+        : [
+            ...prev.entries,
+            ...draft.dates.map((date) => ({ id: newId('ent-'), date, ...fields })),
+          ],
     }));
     setDraft(null);
+  }
+
+  /** 달력 날짜 클릭: 새 기록은 여러 날 토글, 수정은 한 날짜 교체 */
+  function toggleDate(d: DateStr) {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      if (prev.id) return { ...prev, dates: [d] };
+      return {
+        ...prev,
+        dates: prev.dates.includes(d)
+          ? prev.dates.filter((x) => x !== d)
+          : [...prev.dates, d].sort(),
+      };
+    });
   }
 
   function remove(e: WorkEntry) {
@@ -198,7 +231,9 @@ export function WorkTab({ data, month, update }: Props) {
       )}
 
       {entries.length === 0 ? (
-        <p className="empty">이 달의 근무 기록이 없습니다. ‘근무 추가’로 출퇴근을 기록하세요.</p>
+        <p className="empty">
+          이 달의 근무 기록이 없습니다. ‘근무 추가’에서 달력의 여러 날을 골라 한 번에 등록할 수 있습니다.
+        </p>
       ) : (
         <table className="list">
           <thead>
@@ -252,7 +287,9 @@ export function WorkTab({ data, month, update }: Props) {
               {error && <span className="form-error">{error}</span>}
               <span className="spacer" />
               <button onClick={() => setDraft(null)}>취소</button>
-              <button className="primary" onClick={save}>저장</button>
+              <button className="primary" onClick={save}>
+                저장{!draft.id && draft.dates.length > 1 ? ` (${draft.dates.length}일)` : ''}
+              </button>
             </>
           }
         >
@@ -267,13 +304,27 @@ export function WorkTab({ data, month, update }: Props) {
                 ))}
               </select>
             </label>
-            <label>날짜
-              <input
-                type="date"
-                value={draft.date}
-                onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+            <div className="full-row">
+              <MiniCalendar
+                calMonth={draft.calMonth}
+                selected={draft.dates}
+                existing={
+                  new Set(
+                    data.entries
+                      .filter((e) => e.employeeId === draft.employeeId && e.id !== draft.id)
+                      .map((e) => e.date),
+                  )
+                }
+                onToggle={toggleDate}
+                onMonth={(m) => setDraft({ ...draft, calMonth: m })}
               />
-            </label>
+              <p className="hint">
+                {draft.id
+                  ? '날짜를 누르면 이 기록의 날짜가 바뀝니다.'
+                  : `날짜를 여러 개 누르면 같은 내용으로 한 번에 등록됩니다. (${draft.dates.length}일 선택)`}
+                {' '}점이 있는 날은 이미 기록이 있는 날입니다.
+              </p>
+            </div>
             <label>기록 방식
               <select
                 value={draft.mode}
@@ -342,6 +393,52 @@ export function WorkTab({ data, month, update }: Props) {
           )}
         </Modal>
       )}
+    </div>
+  );
+}
+
+interface MiniCalendarProps {
+  calMonth: MonthStr;
+  selected: DateStr[];
+  /** 이미 근무 기록이 있는 날 (표시용 점) */
+  existing: Set<DateStr>;
+  onToggle: (d: DateStr) => void;
+  onMonth: (m: MonthStr) => void;
+}
+
+function MiniCalendar({ calMonth, selected, existing, onToggle, onMonth }: MiniCalendarProps) {
+  const days = monthDates(calMonth);
+  const firstDow = fromDateStr(days[0]).getDay(); // 0=일
+  return (
+    <div className="mini-cal">
+      <div className="mini-cal-head">
+        <button type="button" onClick={() => onMonth(addMonths(calMonth, -1))} aria-label="이전 달">◀</button>
+        <strong>{monthTitle(calMonth)}</strong>
+        <button type="button" onClick={() => onMonth(addMonths(calMonth, 1))} aria-label="다음 달">▶</button>
+      </div>
+      <div className="mini-cal-grid">
+        {DOW_LABELS.map((d) => (
+          <div key={d} className="mini-cal-dow">{d}</div>
+        ))}
+        {Array.from({ length: firstDow }, (_, i) => (
+          <div key={`pad${i}`} />
+        ))}
+        {days.map((d) => (
+          <button
+            type="button"
+            key={d}
+            className={[
+              'mini-cal-day',
+              selected.includes(d) ? 'selected' : '',
+              existing.has(d) ? 'has-entry' : '',
+              d === today() ? 'today' : '',
+            ].filter(Boolean).join(' ')}
+            onClick={() => onToggle(d)}
+          >
+            {Number(d.slice(8))}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

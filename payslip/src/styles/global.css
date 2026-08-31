@@ -155,6 +155,7 @@ table.list tr.total-row td { font-weight: 700; background: var(--bg-2); }
 .week-card-title { font-weight: 700; }
 .ok-text { color: var(--ok); }
 .muted-text { color: var(--text-3); }
+.sub-text { color: var(--text-3); font-size: 12px; }
 
 /* 추가 지급·공제 */
 .adjust-panel {
@@ -219,6 +220,64 @@ table.list tr.total-row td { font-weight: 700; background: var(--bg-2); }
   border-radius: 8px;
   font-size: 12px;
 }
+
+/* 근무 추가 미니 달력 */
+.full-row { grid-column: 1 / -1; }
+.mini-cal {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg);
+}
+.mini-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.mini-cal-head button { border: none; background: transparent; padding: 2px 8px; color: var(--text-3); }
+.mini-cal-head button:hover { color: var(--accent); }
+.mini-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.mini-cal-dow {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 2px 0;
+}
+.mini-cal-dow:first-child { color: var(--danger); }
+.mini-cal-day {
+  position: relative;
+  padding: 5px 0;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--card);
+  text-align: center;
+}
+.mini-cal-day:hover { border-color: var(--accent); }
+.mini-cal-day.today { border-color: var(--border); font-weight: 700; }
+.mini-cal-day.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.mini-cal-day.has-entry::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+.mini-cal-day.selected.has-entry::after { background: #fff; }
 
 /* 폼 */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }

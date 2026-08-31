@@ -71,6 +71,17 @@ export function SettingsModal({ settings, update, onClose }: Props) {
             }
           />
         </label>
+        <label>출근일당 준비시간 (분)
+          <input
+            type="number"
+            min={0}
+            step={5}
+            value={draft.prepMinutesPerDay}
+            onChange={(e) =>
+              setDraft({ ...draft, prepMinutesPerDay: Number(e.target.value) || 0 })
+            }
+          />
+        </label>
       </div>
       <h3 className="form-section">4대보험 근로자 부담 요율 (%)</h3>
       <p className="hint">요율은 해마다 바뀝니다. 고지된 요율에 맞춰 수정하세요.</p>

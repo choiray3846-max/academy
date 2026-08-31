@@ -61,3 +61,12 @@ export function shortDate(s: DateStr): string {
 export function weekLabel(weekStart: DateStr): string {
   return `${shortDate(weekStart)} ~ ${shortDate(addDays(weekStart, 6))}`;
 }
+
+/** 그 달의 모든 날짜 (1일부터 말일까지) */
+export function monthDates(m: MonthStr): DateStr[] {
+  const [y, mo] = m.split('-').map(Number);
+  const last = new Date(y, mo, 0).getDate();
+  const out: DateStr[] = [];
+  for (let d = 1; d <= last; d++) out.push(`${m}-${pad(d)}`);
+  return out;
+}

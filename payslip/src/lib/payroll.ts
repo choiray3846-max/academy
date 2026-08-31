@@ -9,6 +9,9 @@
  * - 연장·야간 가산(시급의 50%)은 상시 5인 이상 사업장일 때만 지급 의무가 있다.
  * - 주휴수당: 주 15시간 이상 근무(연장 제외)한 주에
  *   min(주 근무시간, 40) / 40 × 8시간 × 시급.
+ * - 준비시간: 근무 기록이 있는 날마다 출근일당 준비시간(설정, 기본 30분)을
+ *   직원별 준비 시급(없으면 기본 시급)으로 지급. 별도 수당이라
+ *   주휴·연장 계산에는 넣지 않는다.
  * - 세금·보험료는 10원 미만 절사(국고금 단수 계산 관례).
  */
 import type {
@@ -154,6 +157,10 @@ export interface Payslip {
   overtimePay: number;
   allowanceMinutes: number;
   allowancePay: number;
+  /** 이 달의 출근일 수 (근무 기록이 있는 날짜 수) */
+  prepDays: number;
+  prepMinutes: number;
+  prepPay: number;
   extraPays: Adjustment[];
   extraDeducts: Adjustment[];
   grossPay: number;
@@ -236,6 +243,13 @@ export function calcPayslip(
   const nightPay = settings.over5 ? toPay(nightMinutes, employee.hourlyWage, 0.5) : 0;
   const allowancePay = toPay(allowanceMinutes, employee.hourlyWage);
 
+  // 준비시간: 근무 기록이 있는 날마다 (같은 날 여러 기록이어도 1일)
+  const prepDays = new Set(
+    monthEntries.filter((c) => c.workMinutes > 0).map((c) => c.entry.date),
+  ).size;
+  const prepMinutes = prepDays * settings.prepMinutesPerDay;
+  const prepPay = toPay(prepMinutes, employee.prepWage ?? employee.hourlyWage);
+
   const monthAdjustments = data.adjustments.filter(
     (a) => a.employeeId === employee.id && a.month === month,
   );
@@ -244,7 +258,7 @@ export function calcPayslip(
   const extraPayTotal = extraPays.reduce((s, a) => s + a.amount, 0);
 
   const grossPay =
-    basePay + overtimePay + nightPay + allowancePay + extraPayTotal;
+    basePay + overtimePay + nightPay + allowancePay + prepPay + extraPayTotal;
 
   const deductions = calcDeductions(employee, grossPay, settings);
   const totalDeduction =
@@ -279,6 +293,9 @@ export function calcPayslip(
     overtimePay,
     allowanceMinutes,
     allowancePay,
+    prepDays,
+    prepMinutes,
+    prepPay,
     extraPays,
     extraDeducts,
     grossPay,
