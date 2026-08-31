@@ -29,6 +29,8 @@ export interface Employee {
   name: string;
   /** 시급 (원) */
   hourlyWage: number;
+  /** 준비시간 시급 (원). 없으면 기본 시급과 같게 계산 */
+  prepWage?: number;
   payType: PayType;
   /** 주휴수당 자동 계산 여부 (주 15시간 이상인 주만 발생) */
   weeklyAllowance: boolean;
@@ -86,6 +88,8 @@ export interface Settings {
   minWage: number;
   /** 수업 1회당 근무시간(분) — 수업 횟수 기록에 쓴다 */
   minutesPerSession: number;
+  /** 출근일당 준비시간(분). 근무 기록이 있는 날마다 준비시간 수당이 붙는다 */
+  prepMinutesPerDay: number;
   rates: InsuranceRates;
 }
 

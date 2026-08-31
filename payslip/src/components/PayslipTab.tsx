@@ -175,6 +175,13 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
       amount: slip.allowancePay,
     });
   }
+  if (slip.prepPay > 0) {
+    payRows.push({
+      label: '준비시간',
+      detail: `출근 ${slip.prepDays}일 × ${fmtMinutes(s.prepMinutesPerDay)} × ${fmtWon(employee.prepWage ?? wage)}`,
+      amount: slip.prepPay,
+    });
+  }
   for (const a of slip.extraPays) {
     payRows.push({ label: a.label, detail: '추가 지급', amount: a.amount });
   }
@@ -197,7 +204,12 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
           </tr>
           <tr>
             <th>시급</th>
-            <td>{fmtWon(wage)}</td>
+            <td>
+              {fmtWon(wage)}
+              {employee.prepWage != null && employee.prepWage !== wage
+                ? ` (준비 ${fmtWon(employee.prepWage)})`
+                : ''}
+            </td>
             <th>공제 방식</th>
             <td>{PAY_TYPE_LABELS[employee.payType]}</td>
           </tr>
@@ -307,6 +319,7 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
 
       <p className="payslip-note">
         연장·주휴수당은 주(월~일) 단위로 계산해 그 주 일요일이 속한 달에 반영합니다.
+        준비시간은 출근일마다 붙는 별도 수당으로 주휴·연장 계산에는 넣지 않습니다.
         {!s.over5 && ' 5인 미만 사업장 설정으로 연장·야간 가산수당은 적용하지 않았습니다.'}
       </p>
 

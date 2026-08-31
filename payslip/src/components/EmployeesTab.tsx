@@ -14,6 +14,7 @@ interface Draft {
   id?: string;
   name: string;
   hourlyWage: string;
+  prepWage: string;
   payType: PayType;
   weeklyAllowance: boolean;
   joinDate: string;
@@ -25,6 +26,7 @@ interface Draft {
 const emptyDraft = (minWage: number): Draft => ({
   name: '',
   hourlyWage: String(minWage),
+  prepWage: '',
   payType: 'freelance',
   weeklyAllowance: true,
   joinDate: '',
@@ -51,6 +53,7 @@ export function EmployeesTab({ data, update }: Props) {
       id: e.id,
       name: e.name,
       hourlyWage: String(e.hourlyWage),
+      prepWage: e.prepWage != null ? String(e.prepWage) : '',
       payType: e.payType,
       weeklyAllowance: e.weeklyAllowance,
       joinDate: e.joinDate ?? '',
@@ -72,9 +75,15 @@ export function EmployeesTab({ data, update }: Props) {
       setError('시급을 숫자로 입력하세요.');
       return;
     }
+    const prepWage = draft.prepWage.trim() === '' ? undefined : Number(draft.prepWage);
+    if (prepWage !== undefined && (!Number.isFinite(prepWage) || prepWage < 0)) {
+      setError('준비시간 시급을 숫자로 입력하세요.');
+      return;
+    }
     const fields = {
       name,
       hourlyWage: wage,
+      prepWage,
       payType: draft.payType,
       weeklyAllowance: draft.weeklyAllowance,
       joinDate: draft.joinDate || undefined,
@@ -117,7 +126,12 @@ export function EmployeesTab({ data, update }: Props) {
     return (
       <tr key={e.id} className={e.archived ? 'muted-row' : undefined}>
         <td>{e.name}</td>
-        <td className="num">{fmtWon(e.hourlyWage)}</td>
+        <td className="num">
+          {fmtWon(e.hourlyWage)}
+          {e.prepWage != null && e.prepWage !== e.hourlyWage && (
+            <div className="sub-text">준비 {fmtWon(e.prepWage)}</div>
+          )}
+        </td>
         <td>{PAY_TYPE_LABELS[e.payType]}</td>
         <td>{e.weeklyAllowance ? '자동' : '없음'}</td>
         <td>{e.bank ?? ''}</td>
@@ -190,6 +204,16 @@ export function EmployeesTab({ data, update }: Props) {
                 step={10}
                 value={draft.hourlyWage}
                 onChange={(e) => setDraft({ ...draft, hourlyWage: e.target.value })}
+              />
+            </label>
+            <label>준비시간 시급 (원)
+              <input
+                type="number"
+                min={0}
+                step={10}
+                value={draft.prepWage}
+                onChange={(e) => setDraft({ ...draft, prepWage: e.target.value })}
+                placeholder="비우면 시급과 동일"
               />
             </label>
             <label>공제 방식
