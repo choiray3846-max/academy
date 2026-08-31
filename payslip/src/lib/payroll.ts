@@ -50,9 +50,18 @@ const NIGHT_WINDOWS: Array<[number, number]> = [
   [2760, 2880],
 ];
 
-export function calcEntry(entry: WorkEntry): EntryCalc {
-  const start = parseTime(entry.start);
-  let end = parseTime(entry.end);
+export const DEFAULT_MINUTES_PER_SESSION = 90;
+
+export function calcEntry(
+  entry: WorkEntry,
+  minutesPerSession = DEFAULT_MINUTES_PER_SESSION,
+): EntryCalc {
+  if (entry.sessions && entry.sessions > 0) {
+    // 수업 횟수 기록: 횟수 × 회당 근무시간. 시각이 없으니 야간은 0
+    return { entry, workMinutes: entry.sessions * minutesPerSession, nightMinutes: 0 };
+  }
+  const start = parseTime(entry.start ?? '');
+  let end = parseTime(entry.end ?? '');
   if (start === null || end === null) {
     return { entry, workMinutes: 0, nightMinutes: 0 };
   }
@@ -82,11 +91,12 @@ function summarizeWeek(
   weekStart: DateStr,
   entries: WorkEntry[],
   allowanceEnabled: boolean,
+  minutesPerSession: number,
 ): WeekSummary {
   const byDay = new Map<DateStr, number>();
   let total = 0;
   for (const e of entries) {
-    const { workMinutes } = calcEntry(e);
+    const { workMinutes } = calcEntry(e, minutesPerSession);
     byDay.set(e.date, (byDay.get(e.date) ?? 0) + workMinutes);
     total += workMinutes;
   }
@@ -107,6 +117,7 @@ function summarizeWeek(
 export function weekSummaries(
   allEntries: WorkEntry[],
   employee: Employee,
+  minutesPerSession = DEFAULT_MINUTES_PER_SESSION,
 ): WeekSummary[] {
   const byWeek = new Map<DateStr, WorkEntry[]>();
   for (const e of allEntries) {
@@ -118,7 +129,9 @@ export function weekSummaries(
   }
   return [...byWeek.entries()]
     .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([ws, list]) => summarizeWeek(ws, list, employee.weeklyAllowance));
+    .map(([ws, list]) =>
+      summarizeWeek(ws, list, employee.weeklyAllowance, minutesPerSession),
+    );
 }
 
 export interface DeductionItem {
@@ -193,8 +206,14 @@ export function calcPayslip(
 
   const monthEntries = data.entries
     .filter((e) => e.employeeId === employee.id && monthOf(e.date) === month)
-    .sort((a, b) => (a.date === b.date ? a.start.localeCompare(b.start) : a.date < b.date ? -1 : 1))
-    .map(calcEntry);
+    .sort((a, b) =>
+      a.date === b.date
+        ? (a.start ?? '').localeCompare(b.start ?? '')
+        : a.date < b.date
+          ? -1
+          : 1,
+    )
+    .map((e) => calcEntry(e, settings.minutesPerSession));
 
   for (const c of monthEntries) {
     if (c.workMinutes === 0) {
@@ -207,7 +226,7 @@ export function calcPayslip(
   const basePay = toPay(workMinutes, employee.hourlyWage);
 
   // 주 단위 항목: 일요일이 이 달인 주만 반영
-  const weeks = weekSummaries(data.entries, employee).filter(
+  const weeks = weekSummaries(data.entries, employee, settings.minutesPerSession).filter(
     (w) => monthOf(addDays(w.weekStart, 6)) === month,
   );
   const overtimeMinutes = weeks.reduce((s, w) => s + w.overtimeMinutes, 0);

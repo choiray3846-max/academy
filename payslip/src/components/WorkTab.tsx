@@ -16,6 +16,9 @@ interface Draft {
   id?: string;
   employeeId: string;
   date: string;
+  /** 'sessions' = 수업 횟수로 기록, 'times' = 출퇴근 시각으로 기록 */
+  mode: 'sessions' | 'times';
+  sessions: string;
   start: string;
   end: string;
   breakMinutes: string;
@@ -39,7 +42,11 @@ export function WorkTab({ data, month, update }: Props) {
             monthOf(e.date) === month && (!employeeId || e.employeeId === employeeId),
         )
         .sort((a, b) =>
-          a.date === b.date ? a.start.localeCompare(b.start) : a.date < b.date ? -1 : 1,
+          a.date === b.date
+            ? (a.start ?? '').localeCompare(b.start ?? '')
+            : a.date < b.date
+              ? -1
+              : 1,
         ),
     [data.entries, month, employeeId],
   );
@@ -47,13 +54,13 @@ export function WorkTab({ data, month, update }: Props) {
   // 이 달과 겹치는 주들의 요약 (직원을 골랐을 때만)
   const weeks = useMemo(() => {
     if (!selected) return [];
-    return weekSummaries(data.entries, selected).filter((w) => {
+    return weekSummaries(data.entries, selected, data.settings.minutesPerSession).filter((w) => {
       for (let i = 0; i < 7; i++) {
         if (monthOf(addDays(w.weekStart, i)) === month) return true;
       }
       return false;
     });
-  }, [data.entries, selected, month]);
+  }, [data.entries, data.settings.minutesPerSession, selected, month]);
 
   function openNew() {
     if (employees.length === 0) {
@@ -65,6 +72,8 @@ export function WorkTab({ data, month, update }: Props) {
     setDraft({
       employeeId: employeeId || employees[0].id,
       date: monthOf(now) === month ? now : `${month}-01`,
+      mode: 'sessions',
+      sessions: '1',
       start: '18:00',
       end: '22:00',
       breakMinutes: '0',
@@ -78,8 +87,10 @@ export function WorkTab({ data, month, update }: Props) {
       id: e.id,
       employeeId: e.employeeId,
       date: e.date,
-      start: e.start,
-      end: e.end,
+      mode: e.sessions ? 'sessions' : 'times',
+      sessions: String(e.sessions ?? 1),
+      start: e.start ?? '18:00',
+      end: e.end ?? '22:00',
       breakMinutes: String(e.breakMinutes),
       memo: e.memo ?? '',
     });
@@ -95,27 +106,46 @@ export function WorkTab({ data, month, update }: Props) {
       setError('날짜를 선택하세요.');
       return;
     }
-    if (parseTime(draft.start) === null || parseTime(draft.end) === null) {
-      setError('출퇴근 시각을 HH:MM 형식으로 입력하세요.');
-      return;
-    }
-    const breakMinutes = Number(draft.breakMinutes) || 0;
-    if (breakMinutes < 0) {
-      setError('휴게시간은 0 이상이어야 합니다.');
-      return;
-    }
-    const fields = {
-      employeeId: draft.employeeId,
-      date: draft.date,
-      start: draft.start,
-      end: draft.end,
-      breakMinutes,
-      memo: draft.memo.trim() || undefined,
-    };
-    const check = calcEntry({ id: '', ...fields });
-    if (check.workMinutes === 0) {
-      setError('근무시간이 0입니다. 시각과 휴게시간을 확인하세요.');
-      return;
+    let fields: Omit<WorkEntry, 'id'>;
+    if (draft.mode === 'sessions') {
+      const sessions = Number(draft.sessions);
+      if (!Number.isInteger(sessions) || sessions < 1) {
+        setError('수업 횟수를 선택하세요.');
+        return;
+      }
+      // 수정으로 방식을 바꿀 수 있으니 다른 방식의 필드는 지운다
+      fields = {
+        employeeId: draft.employeeId,
+        date: draft.date,
+        sessions,
+        start: undefined,
+        end: undefined,
+        breakMinutes: 0,
+        memo: draft.memo.trim() || undefined,
+      };
+    } else {
+      if (parseTime(draft.start) === null || parseTime(draft.end) === null) {
+        setError('출퇴근 시각을 HH:MM 형식으로 입력하세요.');
+        return;
+      }
+      const breakMinutes = Number(draft.breakMinutes) || 0;
+      if (breakMinutes < 0) {
+        setError('휴게시간은 0 이상이어야 합니다.');
+        return;
+      }
+      fields = {
+        employeeId: draft.employeeId,
+        date: draft.date,
+        sessions: undefined,
+        start: draft.start,
+        end: draft.end,
+        breakMinutes,
+        memo: draft.memo.trim() || undefined,
+      };
+      if (calcEntry({ id: '', ...fields }).workMinutes === 0) {
+        setError('근무시간이 0입니다. 시각과 휴게시간을 확인하세요.');
+        return;
+      }
     }
     update((prev) => ({
       ...prev,
@@ -131,7 +161,10 @@ export function WorkTab({ data, month, update }: Props) {
     update((prev) => ({ ...prev, entries: prev.entries.filter((x) => x.id !== e.id) }));
   }
 
-  const totalMinutes = entries.reduce((s, e) => s + calcEntry(e).workMinutes, 0);
+  const totalMinutes = entries.reduce(
+    (s, e) => s + calcEntry(e, data.settings.minutesPerSession).workMinutes,
+    0,
+  );
 
   return (
     <div className="tab-body">
@@ -175,15 +208,22 @@ export function WorkTab({ data, month, update }: Props) {
           </thead>
           <tbody>
             {entries.map((e) => {
-              const c = calcEntry(e);
-              const overnight = (parseTime(e.end) ?? 0) <= (parseTime(e.start) ?? 0);
+              const c = calcEntry(e, data.settings.minutesPerSession);
+              const overnight =
+                !e.sessions && (parseTime(e.end ?? '') ?? 0) <= (parseTime(e.start ?? '') ?? 0);
               return (
                 <tr key={e.id}>
                   <td>{shortDate(e.date)}</td>
                   <td>{nameOf(e.employeeId)}</td>
-                  <td className="num">{e.start}</td>
-                  <td className="num">{e.end}{overnight ? ' +1일' : ''}</td>
-                  <td className="num">{e.breakMinutes > 0 ? `${e.breakMinutes}분` : '-'}</td>
+                  {e.sessions ? (
+                    <td colSpan={3}>수업 {e.sessions}회</td>
+                  ) : (
+                    <>
+                      <td className="num">{e.start}</td>
+                      <td className="num">{e.end}{overnight ? ' +1일' : ''}</td>
+                      <td className="num">{e.breakMinutes > 0 ? `${e.breakMinutes}분` : '-'}</td>
+                    </>
+                  )}
                   <td className="num">{fmtMinutes(c.workMinutes)}</td>
                   <td className="num">{c.nightMinutes > 0 ? fmtMinutes(c.nightMinutes) : '-'}</td>
                   <td>{e.memo ?? ''}</td>
@@ -234,29 +274,57 @@ export function WorkTab({ data, month, update }: Props) {
                 onChange={(e) => setDraft({ ...draft, date: e.target.value })}
               />
             </label>
-            <label>출근
-              <input
-                type="time"
-                value={draft.start}
-                onChange={(e) => setDraft({ ...draft, start: e.target.value })}
-              />
+            <label>기록 방식
+              <select
+                value={draft.mode}
+                onChange={(e) =>
+                  setDraft({ ...draft, mode: e.target.value as Draft['mode'] })
+                }
+              >
+                <option value="sessions">수업 횟수</option>
+                <option value="times">출퇴근 시각</option>
+              </select>
             </label>
-            <label>퇴근
-              <input
-                type="time"
-                value={draft.end}
-                onChange={(e) => setDraft({ ...draft, end: e.target.value })}
-              />
-            </label>
-            <label>휴게시간 (분)
-              <input
-                type="number"
-                min={0}
-                step={5}
-                value={draft.breakMinutes}
-                onChange={(e) => setDraft({ ...draft, breakMinutes: e.target.value })}
-              />
-            </label>
+            {draft.mode === 'sessions' ? (
+              <label>수업 횟수
+                <select
+                  value={draft.sessions}
+                  onChange={(e) => setDraft({ ...draft, sessions: e.target.value })}
+                >
+                  {[1, 2, 3, 4].map((n) => (
+                    <option key={n} value={n}>
+                      {n}회 ({fmtMinutes(n * data.settings.minutesPerSession)} 근무)
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <>
+                <label>출근
+                  <input
+                    type="time"
+                    value={draft.start}
+                    onChange={(e) => setDraft({ ...draft, start: e.target.value })}
+                  />
+                </label>
+                <label>퇴근
+                  <input
+                    type="time"
+                    value={draft.end}
+                    onChange={(e) => setDraft({ ...draft, end: e.target.value })}
+                  />
+                </label>
+                <label>휴게시간 (분)
+                  <input
+                    type="number"
+                    min={0}
+                    step={5}
+                    value={draft.breakMinutes}
+                    onChange={(e) => setDraft({ ...draft, breakMinutes: e.target.value })}
+                  />
+                </label>
+              </>
+            )}
             <label>메모
               <input
                 value={draft.memo}
@@ -264,7 +332,14 @@ export function WorkTab({ data, month, update }: Props) {
               />
             </label>
           </div>
-          <p className="hint">퇴근 시각이 출근보다 빠르면 다음 날 퇴근(자정 넘김)으로 계산합니다.</p>
+          {draft.mode === 'sessions' ? (
+            <p className="hint">
+              수업 1회 = {fmtMinutes(data.settings.minutesPerSession)} 근무로 계산합니다.
+              (설정에서 변경 가능)
+            </p>
+          ) : (
+            <p className="hint">퇴근 시각이 출근보다 빠르면 다음 날 퇴근(자정 넘김)으로 계산합니다.</p>
+          )}
         </Modal>
       )}
     </div>

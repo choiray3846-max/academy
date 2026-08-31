@@ -263,13 +263,21 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
           </thead>
           <tbody>
             {slip.entries.map((c) => {
-              const overnight = (parseTime(c.entry.end) ?? 0) <= (parseTime(c.entry.start) ?? 0);
+              const e = c.entry;
+              const overnight =
+                !e.sessions && (parseTime(e.end ?? '') ?? 0) <= (parseTime(e.start ?? '') ?? 0);
               return (
-                <tr key={c.entry.id}>
-                  <td>{shortDate(c.entry.date)}</td>
-                  <td className="num">{c.entry.start}</td>
-                  <td className="num">{c.entry.end}{overnight ? ' +1일' : ''}</td>
-                  <td className="num">{c.entry.breakMinutes > 0 ? `${c.entry.breakMinutes}분` : '-'}</td>
+                <tr key={e.id}>
+                  <td>{shortDate(e.date)}</td>
+                  {e.sessions ? (
+                    <td colSpan={3}>수업 {e.sessions}회</td>
+                  ) : (
+                    <>
+                      <td className="num">{e.start}</td>
+                      <td className="num">{e.end}{overnight ? ' +1일' : ''}</td>
+                      <td className="num">{e.breakMinutes > 0 ? `${e.breakMinutes}분` : '-'}</td>
+                    </>
+                  )}
                   <td className="num">{fmtMinutes(c.workMinutes)}</td>
                   <td className="num">{c.nightMinutes > 0 ? fmtMinutes(c.nightMinutes) : '-'}</td>
                 </tr>
