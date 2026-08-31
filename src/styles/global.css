@@ -981,3 +981,15 @@ button:focus-visible {
   border-radius: 8px;
 }
 .app-link:hover { border-color: var(--accent); }
+
+/* 여러 컴퓨터 공유 상태 배지 */
+.sync-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #e6f7ee;
+  color: #0e9f6e;
+}
+.sync-badge.syncing { background: var(--accent-soft); color: var(--accent); }
+.sync-badge.error { background: var(--danger-soft); color: var(--danger); }

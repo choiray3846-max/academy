@@ -1,5 +1,5 @@
 import type { Manager, Student, Teacher, WeekBoard } from '../types';
-import { BLOCK_NAMES, DAY_LABELS, SEATS_PER_GROUP } from '../types';
+import { BLOCK_NAMES, compareStudents, DAY_LABELS, SEATS_PER_GROUP } from '../types';
 import { addDays, longDayLabel } from '../lib/date';
 
 interface WeekPrintProps {
@@ -9,16 +9,32 @@ interface WeekPrintProps {
   students: Student[];
   teachers: Teacher[];
   managers: Manager[];
+  /** true면 강사·학생 칸이 선택 상자가 되어 바로 편집할 수 있다 */
+  editable?: boolean;
+  onSetTeacher?: (d: number, b: number, g: number, teacherId: string | undefined) => void;
+  onSetStudent?: (d: number, b: number, g: number, seatIndex: number, studentId: string | undefined) => void;
 }
 
 /**
  * 스프레드시트와 같은 6일 전체 표.
  * 화면의 '주간 전체' 보기와 인쇄 양쪽에 쓴다.
  */
-export function WeekPrint({ week, weekdayTimes, saturdayTimes, students, teachers, managers }: WeekPrintProps) {
+export function WeekPrint({
+  week,
+  weekdayTimes,
+  saturdayTimes,
+  students,
+  teachers,
+  managers,
+  editable = false,
+  onSetTeacher,
+  onSetStudent,
+}: WeekPrintProps) {
   const studentById = new Map(students.map((s) => [s.id, s]));
   const teacherById = new Map(teachers.map((t) => [t.id, t]));
   const managerById = new Map(managers.map((m) => [m.id, m]));
+  const activeTeachers = teachers.filter((t) => !t.archived);
+  const activeStudents = students.filter((s) => !s.archived).sort(compareStudents);
 
   return (
     <div className="week-print">
@@ -59,13 +75,45 @@ export function WeekPrint({ week, weekdayTimes, saturdayTimes, students, teacher
                         )}
                         {isGroupStart && (
                           <td rowSpan={SEATS_PER_GROUP} className={`wp-t-cell${group.teacherId ? ' filled' : ''}`}>
-                            {group.teacherId ? teacherById.get(group.teacherId)?.name ?? '' : ''}
+                            {editable ? (
+                              <select
+                                className="wp-select"
+                                value={group.teacherId ?? ''}
+                                onChange={(e) => onSetTeacher?.(d, b, g, e.target.value || undefined)}
+                              >
+                                <option value=""></option>
+                                {activeTeachers.map((t) => (
+                                  <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                              </select>
+                            ) : group.teacherId ? (
+                              teacherById.get(group.teacherId)?.name ?? ''
+                            ) : (
+                              ''
+                            )}
                           </td>
                         )}
                         <td className="wp-m-cell">
                           {seat.managerId ? managerById.get(seat.managerId)?.name ?? '' : ''}
                         </td>
-                        <td className="wp-name">{student?.name ?? ''}</td>
+                        <td className="wp-name">
+                          {editable ? (
+                            <select
+                              className="wp-select"
+                              value={seat.studentId ?? ''}
+                              onChange={(e) => onSetStudent?.(d, b, g, s, e.target.value || undefined)}
+                            >
+                              <option value=""></option>
+                              {activeStudents.map((st) => (
+                                <option key={st.id} value={st.id}>
+                                  {st.name} ({st.grade})
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            student?.name ?? ''
+                          )}
+                        </td>
                         <td>{seat.studentId ? seat.subject || student?.defaultSubject || '' : ''}</td>
                         <td className="wp-grade-cell">{student?.grade ?? ''}</td>
                         <td className="wp-no-cell">{seatNo}</td>

@@ -22,19 +22,32 @@ export const BLOCK_NAMES = ['A', 'B', 'C'] as const;
 export const MAX_SESSIONS_PER_DAY = 2;
 export const DAY_LABELS = ['월', '화', '수', '목', '금', '토'] as const;
 
+/** 학생의 과목별 등록 (예: 수학 주3회, 영어 주1회) */
+export interface Enrollment {
+  subject: string;
+  weeklyCount: number;
+}
+
 export interface Student {
   id: ID;
   name: string;
   grade: string;          // 예: '중3', '고1'
-  defaultSubject?: string; // 배정할 때 기본으로 채울 과목
-  /** 주당 등록 회차 (회차제 관리·자동 배치용). 없으면 집계만 표시 */
+  /** 과목별 등록 목록. 자동 배치·회차 집계의 기준이다. */
+  enrollments?: Enrollment[];
+  /** @deprecated enrollments로 대체됨. 옛 데이터 호환용으로만 남아 있다. */
+  defaultSubject?: string;
+  /** @deprecated enrollments로 대체됨. */
   weeklyCount?: number;
   /** 올 수 있는 시간대. '요일-교시' 키 목록 (예: '0-1' = 월 B교시) */
   availability?: string[];
   /**
-   * 강사별 관계. 'must'(지정)가 하나라도 있으면 그 강사(들)에게만 배치되고,
+   * 과목별 강사 관계. 과목 이름 → (강사 id → 'must'|'prefer').
+   * 'must'(지정)가 있으면 그 과목은 그 강사(들)에게만 배치되고,
    * 'prefer'(선호)는 자동 배치에서 우선순위를 높인다.
+   * 예: { 수학: { t1: 'must' }, 영어: { t3: 'prefer' } }
    */
+  subjectTeacherPrefs?: Record<string, Record<ID, 'must' | 'prefer'>>;
+  /** @deprecated subjectTeacherPrefs로 대체됨. 옛 데이터 호환용. */
   teacherPrefs?: Record<ID, 'must' | 'prefer'>;
   memo?: string;
   archived?: boolean;
@@ -48,6 +61,42 @@ export interface Teacher {
   /** 근무 가능한 시간대. '요일-교시' 키 목록 */
   availability?: string[];
   archived?: boolean;
+}
+
+/** 학생의 등록 목록. 옛 데이터(defaultSubject/weeklyCount)도 변환해서 돌려준다. */
+export function studentEnrollments(s: Student): Enrollment[] {
+  if (s.enrollments && s.enrollments.length > 0) return s.enrollments;
+  if (s.weeklyCount || s.defaultSubject) {
+    return [{ subject: s.defaultSubject?.trim() ?? '', weeklyCount: s.weeklyCount ?? 0 }];
+  }
+  return [];
+}
+
+/**
+ * 이 학생의 이 과목에 적용되는 강사 관계.
+ * 과목별 설정이 있으면 그것을, 없으면 옛 학생 단위 설정을 쓴다.
+ */
+export function prefsForSubject(
+  st: Student,
+  subject: string,
+): Record<ID, 'must' | 'prefer'> {
+  return st.subjectTeacherPrefs?.[subject] ?? st.teacherPrefs ?? {};
+}
+
+/**
+ * 학년 정렬용 순위. '초1'~'초6' → 1~6, '중1'~'중3' → 11~13,
+ * '고1'~'고3' → 21~23. 형식이 다르면 맨 뒤(99).
+ */
+export function gradeRank(grade: string): number {
+  const m = grade.trim().match(/(초|중|고)\s*(\d)/);
+  if (!m) return 99;
+  const base = m[1] === '초' ? 0 : m[1] === '중' ? 10 : 20;
+  return base + Number(m[2]);
+}
+
+/** 학생 정렬: 학년순(초→중→고) → 같은 학년은 이름 가나다순 */
+export function compareStudents(a: Student, b: Student): number {
+  return gradeRank(a.grade) - gradeRank(b.grade) || a.name.localeCompare(b.name, 'ko');
 }
 
 /** 강사 과목 문자열을 과목 목록으로 (쉼표·가운뎃점·빗금 구분) */

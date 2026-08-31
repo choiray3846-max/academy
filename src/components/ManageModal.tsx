@@ -3,24 +3,41 @@ import type { AcademyData, Teacher } from '../types';
 import { Modal } from './Modal';
 import { newId } from '../lib/id';
 import { exportToJson, importFromJson } from '../lib/storage';
+import { fetchRemote, pushRemote, type SyncConfig } from '../lib/sync';
 import { leaveEntriesInYear, leaveUsedInYear } from '../lib/schedule';
 import { createEmptyData } from '../data/seed';
 import { today } from '../lib/date';
 
-type Tab = 'teachers' | 'leave' | 'settings' | 'backup';
+type Tab = 'teachers' | 'leave' | 'settings' | 'share' | 'backup';
 
 interface ManageModalProps {
   data: AcademyData;
   update: (updater: (prev: AcademyData) => AcademyData) => void;
   replaceAll: (next: AcademyData) => void;
+  syncCfg: SyncConfig | null;
+  syncStatus: 'off' | 'ok' | 'syncing' | 'error';
+  onChangeSyncConfig: (cfg: SyncConfig | null) => void;
   onClose: () => void;
 }
 
 const PALETTE = ['#2f6fed', '#0e9f6e', '#d9480f', '#7048e8', '#d6336c', '#1c7ed6', '#e8590c', '#0ca678'];
 
 /** 지점·강사·설정·백업을 한 모달에서 관리한다. (원장 모드 전용) */
-export function ManageModal({ data, update, replaceAll, onClose }: ManageModalProps) {
+export function ManageModal({
+  data,
+  update,
+  replaceAll,
+  syncCfg,
+  syncStatus,
+  onChangeSyncConfig,
+  onClose,
+}: ManageModalProps) {
   const [tab, setTab] = useState<Tab>('teachers');
+  const [shareUrl, setShareUrl] = useState(syncCfg?.url ?? '');
+  const [shareKey, setShareKey] = useState(syncCfg?.anonKey ?? '');
+  const [shareRoom, setShareRoom] = useState(syncCfg?.roomId ?? '');
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareMsg, setShareMsg] = useState('');
   const [leaveYear, setLeaveYear] = useState(() => Number(today().slice(0, 4)));
   const fileRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState('');
@@ -114,6 +131,7 @@ export function ManageModal({ data, update, replaceAll, onClose }: ManageModalPr
         <button className={tab === 'teachers' ? 'active' : ''} onClick={() => setTab('teachers')}>직원</button>
         <button className={tab === 'leave' ? 'active' : ''} onClick={() => setTab('leave')}>연차 현황</button>
         <button className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}>설정</button>
+        <button className={tab === 'share' ? 'active' : ''} onClick={() => setTab('share')}>공유</button>
         <button className={tab === 'backup' ? 'active' : ''} onClick={() => setTab('backup')}>백업·초기화</button>
       </div>
 
@@ -320,6 +338,91 @@ export function ManageModal({ data, update, replaceAll, onClose }: ManageModalPr
               (브라우저 저장 기반이므로 보안 장치가 아닌 실수 방지용입니다)
             </span>
           </div>
+        </>
+      )}
+
+      {tab === 'share' && (
+        <>
+          {syncCfg ? (
+            <div className="form-error" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+              현재 공유 중입니다 — 학원 코드 '<b>{syncCfg.roomId}</b>' · 상태:{' '}
+              {syncStatus === 'ok' ? '정상 ✓' : syncStatus === 'syncing' ? '저장 중…' : '오류 (인터넷·설정 확인)'}
+            </div>
+          ) : (
+            <p style={{ margin: 0, color: 'var(--text-2)' }}>
+              여러 컴퓨터에서 <b>같은 달력을 실시간으로</b> 보고 편집하려면 무료 클라우드 저장소
+              (Supabase)를 연결하세요. 시간표 앱에서 이미 만들었다면 <b>같은 URL·키·학원 코드</b>를
+              그대로 입력하면 됩니다 (달력 데이터는 따로 저장되어 섞이지 않습니다).
+            </p>
+          )}
+
+          <div className="field">
+            <label>Supabase 프로젝트 URL</label>
+            <input value={shareUrl} placeholder="https://xxxx.supabase.co" onChange={(e) => setShareUrl(e.target.value.trim())} />
+          </div>
+          <div className="field">
+            <label>anon 공개 키</label>
+            <input value={shareKey} placeholder="eyJhbGci…" onChange={(e) => setShareKey(e.target.value.trim())} />
+          </div>
+          <div className="field">
+            <label>학원 코드 (같은 코드를 쓰는 기기끼리 공유됩니다)</label>
+            <input value={shareRoom} placeholder="예: 우리학원-본원" onChange={(e) => setShareRoom(e.target.value.trim())} />
+          </div>
+
+          {shareMsg && (
+            <div className="form-error" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{shareMsg}</div>
+          )}
+
+          <div className="check-row">
+            <button
+              className="primary"
+              disabled={shareBusy || !shareUrl || !shareKey || !shareRoom}
+              onClick={async () => {
+                setShareBusy(true);
+                setShareMsg('');
+                const cfg: SyncConfig = { url: shareUrl, anonKey: shareKey, roomId: shareRoom };
+                try {
+                  const remote = await fetchRemote(cfg);
+                  if (remote) {
+                    const useRemote = window.confirm(
+                      '클라우드에 이미 이 학원 코드의 달력 데이터가 있습니다.\n\n' +
+                        '[확인] = 클라우드 데이터를 가져와서 씁니다 (이 컴퓨터의 현재 데이터는 대체됨)\n' +
+                        '[취소] = 이 컴퓨터의 데이터를 클라우드에 올려 덮어씁니다',
+                    );
+                    if (!useRemote) await pushRemote(cfg, data);
+                  } else {
+                    await pushRemote(cfg, data);
+                  }
+                  onChangeSyncConfig(cfg);
+                  setShareMsg('연결 완료! 이제 이 설정을 다른 컴퓨터에도 똑같이 입력하면 공유됩니다.');
+                } catch (e) {
+                  setShareMsg(
+                    `연결 실패: ${e instanceof Error ? e.message : '알 수 없는 오류'}. URL·키와 테이블 생성(시간표 앱 공유 탭의 안내 참고)을 확인해 주세요.`,
+                  );
+                } finally {
+                  setShareBusy(false);
+                }
+              }}
+            >
+              {shareBusy ? '연결 중…' : syncCfg ? '설정 다시 연결' : '연결하기'}
+            </button>
+            {syncCfg && (
+              <button
+                onClick={() => {
+                  if (window.confirm('공유를 끊을까요? 이 컴퓨터의 데이터는 그대로 남습니다.')) {
+                    onChangeSyncConfig(null);
+                    setShareMsg('공유를 끊었습니다.');
+                  }
+                }}
+              >
+                공유 끊기
+              </button>
+            )}
+          </div>
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--text-3)' }}>
+            Supabase를 처음 설정하는 방법(가입 → SQL 실행 → 키 복사)은 시간표 앱의 [명단·설정 → 공유]
+            탭에 단계별로 안내되어 있습니다. 한 프로젝트로 달력·시간표 둘 다 쓸 수 있습니다.
+          </p>
         </>
       )}
 

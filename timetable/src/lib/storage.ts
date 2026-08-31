@@ -1,4 +1,5 @@
-import type { TimetableData } from '../types';
+import type { Student, Teacher, TimetableData } from '../types';
+import { studentEnrollments, teacherSubjects } from '../types';
 
 const KEY = 'academy-timetable/data';
 export const SCHEMA_VERSION = 1;
@@ -19,11 +20,52 @@ function defaults(): TimetableData {
   };
 }
 
+/** 옛 단일 과목 필드(defaultSubject/weeklyCount)를 enrollments로 바꾼다. */
+function migrateStudent(s: Student): Student {
+  if (s.enrollments && s.enrollments.length > 0) return s;
+  if (s.weeklyCount || s.defaultSubject) {
+    return {
+      ...s,
+      enrollments: [{ subject: s.defaultSubject?.trim() ?? '', weeklyCount: s.weeklyCount ?? 0 }],
+    };
+  }
+  return s;
+}
+
+/**
+ * 옛 학생 단위 강사 관계(teacherPrefs)를 과목별(subjectTeacherPrefs)로 바꾼다.
+ * 예전 동작과 같도록, 각 등록 과목마다 그 과목을 가르칠 수 있는 강사의
+ * 관계만 남긴다.
+ */
+function migrateStudentPrefs(s: Student, teachers: Teacher[]): Student {
+  if (s.subjectTeacherPrefs || !s.teacherPrefs) return s;
+  const byId = new Map(teachers.map((t) => [t.id, t]));
+  const out: Record<string, Record<string, 'must' | 'prefer'>> = {};
+  for (const e of studentEnrollments(s)) {
+    const subj = e.subject.trim();
+    const filtered: Record<string, 'must' | 'prefer'> = {};
+    for (const [id, level] of Object.entries(s.teacherPrefs)) {
+      const t = byId.get(id);
+      if (!t) continue;
+      const list = teacherSubjects(t);
+      if (list.length === 0 || subj === '' || list.includes(subj)) filtered[id] = level;
+    }
+    if (Object.keys(filtered).length > 0) out[subj] = filtered;
+  }
+  return {
+    ...s,
+    subjectTeacherPrefs: Object.keys(out).length > 0 ? out : undefined,
+    teacherPrefs: undefined,
+  };
+}
+
 function migrate(raw: Partial<TimetableData>): TimetableData {
   const base = defaults();
   return {
     version: SCHEMA_VERSION,
-    students: raw.students ?? [],
+    students: (raw.students ?? [])
+      .map(migrateStudent)
+      .map((s) => migrateStudentPrefs(s, raw.teachers ?? [])),
     teachers: raw.teachers ?? [],
     managers: raw.managers ?? [],
     settings: { ...base.settings, ...(raw.settings ?? {}) },
