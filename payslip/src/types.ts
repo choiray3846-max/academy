@@ -44,9 +44,15 @@ export interface WorkEntry {
   id: ID;
   employeeId: ID;
   date: DateStr;
-  start: TimeStr;
+  /**
+   * 수업 횟수 기록. 값이 있으면 출퇴근 시각 대신
+   * 수업 횟수 × 회당 근무시간(설정, 기본 90분)으로 계산한다.
+   * (1회 = 1시간 30분, 2회 = 3시간)
+   */
+  sessions?: number;
+  start?: TimeStr;
   /** 시작보다 빠르면 다음 날 퇴근(자정 넘김)으로 본다 */
-  end: TimeStr;
+  end?: TimeStr;
   breakMinutes: number;
   memo?: string;
 }
@@ -78,6 +84,8 @@ export interface Settings {
   over5: boolean;
   /** 최저시급 (경고 표시용) */
   minWage: number;
+  /** 수업 1회당 근무시간(분) — 수업 횟수 기록에 쓴다 */
+  minutesPerSession: number;
   rates: InsuranceRates;
 }
 

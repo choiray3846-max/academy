@@ -60,6 +60,17 @@ export function SettingsModal({ settings, update, onClose }: Props) {
             onChange={(e) => setDraft({ ...draft, minWage: Number(e.target.value) || 0 })}
           />
         </label>
+        <label>수업 1회당 근무시간 (분)
+          <input
+            type="number"
+            min={1}
+            step={5}
+            value={draft.minutesPerSession}
+            onChange={(e) =>
+              setDraft({ ...draft, minutesPerSession: Number(e.target.value) || 90 })
+            }
+          />
+        </label>
       </div>
       <h3 className="form-section">4대보험 근로자 부담 요율 (%)</h3>
       <p className="hint">요율은 해마다 바뀝니다. 고지된 요율에 맞춰 수정하세요.</p>
