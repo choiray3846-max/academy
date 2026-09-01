@@ -25,7 +25,8 @@ interface Props {
 
 interface Draft {
   id?: string;
-  employeeId: string;
+  /** 선택한 직원들. 새 기록은 여러 명 한 번에, 수정은 한 명만 */
+  employeeIds: string[];
   /** 선택한 날짜들. 새 기록은 여러 날, 수정은 한 날짜만 */
   dates: DateStr[];
   /** 달력에 표시 중인 달 */
@@ -91,7 +92,7 @@ export function WorkTab({ data, month, update }: Props) {
     }
     setError('');
     setDraft({
-      employeeId: employeeId || employees[0].id,
+      employeeIds: employeeId ? [employeeId] : [],
       dates: [],
       calMonth: month,
       mode: 'sessions',
@@ -110,7 +111,7 @@ export function WorkTab({ data, month, update }: Props) {
     setError('');
     setDraft({
       id: e.id,
-      employeeId: e.employeeId,
+      employeeIds: [e.employeeId],
       dates: [e.date],
       calMonth: monthOf(e.date),
       mode: e.customPay != null ? 'custom' : e.dcMinutes ? 'dc' : e.sessions ? 'sessions' : 'times',
@@ -127,15 +128,15 @@ export function WorkTab({ data, month, update }: Props) {
 
   function save() {
     if (!draft) return;
-    if (!draft.employeeId) {
-      setError('직원을 선택하세요.');
+    if (draft.employeeIds.length === 0) {
+      setError('직원을 한 명 이상 선택하세요.');
       return;
     }
     if (draft.dates.length === 0) {
       setError('달력에서 날짜를 하나 이상 선택하세요.');
       return;
     }
-    let fields: Omit<WorkEntry, 'id' | 'date'>;
+    let fields: Omit<WorkEntry, 'id' | 'date' | 'employeeId'>;
     if (draft.mode === 'sessions') {
       const sessions = Number(draft.sessions);
       if (!Number.isInteger(sessions) || sessions < 1) {
@@ -144,7 +145,6 @@ export function WorkTab({ data, month, update }: Props) {
       }
       // 수정으로 방식을 바꿀 수 있으니 다른 방식의 필드는 지운다
       fields = {
-        employeeId: draft.employeeId,
         sessions,
         dcMinutes: undefined,
         customPay: undefined,
@@ -161,7 +161,6 @@ export function WorkTab({ data, month, update }: Props) {
         return;
       }
       fields = {
-        employeeId: draft.employeeId,
         sessions: undefined,
         dcMinutes: Math.round(hours * 60),
         customPay: undefined,
@@ -178,7 +177,6 @@ export function WorkTab({ data, month, update }: Props) {
         return;
       }
       fields = {
-        employeeId: draft.employeeId,
         sessions: undefined,
         dcMinutes: undefined,
         customPay: Math.round(amount),
@@ -199,7 +197,6 @@ export function WorkTab({ data, month, update }: Props) {
         return;
       }
       fields = {
-        employeeId: draft.employeeId,
         sessions: undefined,
         dcMinutes: undefined,
         customPay: undefined,
@@ -209,7 +206,8 @@ export function WorkTab({ data, month, update }: Props) {
         late: draft.late || undefined,
         memo: draft.memo.trim() || undefined,
       };
-      if (calcEntry({ id: '', date: draft.dates[0], ...fields }).workMinutes === 0) {
+      const check = { id: '', date: draft.dates[0], employeeId: draft.employeeIds[0], ...fields };
+      if (calcEntry(check).workMinutes === 0) {
         setError('근무시간이 0입니다. 시각과 휴게시간을 확인하세요.');
         return;
       }
@@ -218,14 +216,33 @@ export function WorkTab({ data, month, update }: Props) {
       ...prev,
       entries: draft.id
         ? prev.entries.map((e) =>
-            e.id === draft.id ? { ...e, ...fields, date: draft.dates[0] } : e,
+            e.id === draft.id
+              ? { ...e, ...fields, employeeId: draft.employeeIds[0], date: draft.dates[0] }
+              : e,
           )
         : [
             ...prev.entries,
-            ...draft.dates.map((date) => ({ id: newId('ent-'), date, ...fields })),
+            // 선택한 직원 × 날짜 조합을 한 번에 등록한다
+            ...draft.employeeIds.flatMap((employeeId) =>
+              draft.dates.map((date) => ({ id: newId('ent-'), employeeId, date, ...fields })),
+            ),
           ],
     }));
     setDraft(null);
+  }
+
+  /** 직원 칩 클릭: 새 기록은 여러 명 토글, 수정은 한 명 교체 */
+  function toggleEmployee(id: string) {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      if (prev.id) return { ...prev, employeeIds: [id] };
+      return {
+        ...prev,
+        employeeIds: prev.employeeIds.includes(id)
+          ? prev.employeeIds.filter((x) => x !== id)
+          : [...prev.employeeIds, id],
+      };
+    });
   }
 
   /** 달력 날짜 클릭: 새 기록은 여러 날 토글, 수정은 한 날짜 교체 */
@@ -361,22 +378,35 @@ export function WorkTab({ data, month, update }: Props) {
               <span className="spacer" />
               <button onClick={() => setDraft(null)}>취소</button>
               <button className="primary" onClick={save}>
-                저장{!draft.id && draft.dates.length > 1 ? ` (${draft.dates.length}일)` : ''}
+                저장
+                {!draft.id && draft.dates.length * draft.employeeIds.length > 1
+                  ? ` (${draft.employeeIds.length}명 × ${draft.dates.length}일)`
+                  : ''}
               </button>
             </>
           }
         >
           <div className="form-grid">
-            <label>직원
-              <select
-                value={draft.employeeId}
-                onChange={(e) => setDraft({ ...draft, employeeId: e.target.value })}
-              >
+            <div className="full-row">
+              <div className="emp-chips">
+                <span className="chips-label">직원</span>
                 {employees.map((e) => (
-                  <option key={e.id} value={e.id}>{e.name}</option>
+                  <button
+                    type="button"
+                    key={e.id}
+                    className={`chip${draft.employeeIds.includes(e.id) ? ' active' : ''}`}
+                    onClick={() => toggleEmployee(e.id)}
+                  >
+                    {e.name}
+                  </button>
                 ))}
-              </select>
-            </label>
+              </div>
+              {!draft.id && (
+                <p className="hint">
+                  직원을 여러 명 누르면 같은 내용으로 한 번에 등록됩니다. ({draft.employeeIds.length}명 선택)
+                </p>
+              )}
+            </div>
             <div className="full-row">
               <MiniCalendar
                 calMonth={draft.calMonth}
@@ -384,7 +414,9 @@ export function WorkTab({ data, month, update }: Props) {
                 existing={
                   new Set(
                     data.entries
-                      .filter((e) => e.employeeId === draft.employeeId && e.id !== draft.id)
+                      .filter(
+                        (e) => draft.employeeIds.includes(e.employeeId) && e.id !== draft.id,
+                      )
                       .map((e) => e.date),
                   )
                 }
