@@ -233,6 +233,23 @@ table.list tr.total-row td { font-weight: 700; background: var(--bg-2); }
 .full-row { grid-column: 1 / -1; }
 .emp-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .chips-label { font-size: 13px; color: var(--text-2); margin-right: 4px; }
+
+/* 직원별 입력 줄 */
+.emp-values {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  margin-bottom: 6px;
+}
+.emp-values label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-2); }
+.emp-values label.check { flex-direction: row; align-items: center; padding-bottom: 6px; }
+.emp-values input[type='number'] { width: 110px; }
+.emp-values-name { font-weight: 700; min-width: 56px; padding-bottom: 7px; }
 .mini-cal {
   border: 1px solid var(--border);
   border-radius: 8px;

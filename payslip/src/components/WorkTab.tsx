@@ -23,19 +23,10 @@ interface Props {
   update: (updater: (prev: PayslipData) => PayslipData) => void;
 }
 
-interface Draft {
-  id?: string;
-  /** 선택한 직원들. 새 기록은 여러 명 한 번에, 수정은 한 명만 */
-  employeeIds: string[];
-  /** 선택한 날짜들. 새 기록은 여러 날, 수정은 한 날짜만 */
-  dates: DateStr[];
-  /** 달력에 표시 중인 달 */
-  calMonth: MonthStr;
-  /**
-   * 'sessions' = 수업 횟수, 'times' = 출퇴근 시각,
-   * 'dc' = DC 업무(시간만), 'custom' = 그날 급여 직접 입력
-   */
-  mode: 'sessions' | 'times' | 'dc' | 'custom';
+type Mode = 'sessions' | 'times' | 'dc' | 'custom';
+
+/** 직원별 입력값 — 여러 명을 한 번에 등록해도 각자 다르게 넣을 수 있다 */
+interface EmpValues {
   sessions: string;
   /** DC 업무 시간 (시간 단위, 0.5 단위 입력) */
   dcHours: string;
@@ -45,6 +36,33 @@ interface Draft {
   start: string;
   end: string;
   breakMinutes: string;
+}
+
+const defaultValues = (): EmpValues => ({
+  sessions: '1',
+  dcHours: '1',
+  customPay: '',
+  late: false,
+  start: '18:00',
+  end: '22:00',
+  breakMinutes: '0',
+});
+
+interface Draft {
+  id?: string;
+  /** 선택한 직원들. 새 기록은 여러 명 한 번에, 수정은 한 명만 */
+  employeeIds: string[];
+  /** 직원별 입력값 (선택된 직원마다 따로) */
+  perEmp: Record<string, EmpValues>;
+  /** 선택한 날짜들. 새 기록은 여러 날, 수정은 한 날짜만 */
+  dates: DateStr[];
+  /** 달력에 표시 중인 달 */
+  calMonth: MonthStr;
+  /**
+   * 'sessions' = 수업 횟수, 'times' = 출퇴근 시각,
+   * 'dc' = DC 업무(시간만), 'custom' = 그날 급여 직접 입력
+   */
+  mode: Mode;
   memo: string;
 }
 
@@ -93,16 +111,10 @@ export function WorkTab({ data, month, update }: Props) {
     setError('');
     setDraft({
       employeeIds: employeeId ? [employeeId] : [],
+      perEmp: employeeId ? { [employeeId]: defaultValues() } : {},
       dates: [],
       calMonth: month,
       mode: 'sessions',
-      sessions: '1',
-      dcHours: '1',
-      customPay: '',
-      late: false,
-      start: '18:00',
-      end: '22:00',
-      breakMinutes: '0',
       memo: '',
     });
   }
@@ -112,18 +124,92 @@ export function WorkTab({ data, month, update }: Props) {
     setDraft({
       id: e.id,
       employeeIds: [e.employeeId],
+      perEmp: {
+        [e.employeeId]: {
+          sessions: String(e.sessions ?? 1),
+          dcHours: String((e.dcMinutes ?? 60) / 60),
+          customPay: e.customPay != null ? String(e.customPay) : '',
+          late: e.late ?? false,
+          start: e.start ?? '18:00',
+          end: e.end ?? '22:00',
+          breakMinutes: String(e.breakMinutes),
+        },
+      },
       dates: [e.date],
       calMonth: monthOf(e.date),
       mode: e.customPay != null ? 'custom' : e.dcMinutes ? 'dc' : e.sessions ? 'sessions' : 'times',
-      sessions: String(e.sessions ?? 1),
-      dcHours: String((e.dcMinutes ?? 60) / 60),
-      customPay: e.customPay != null ? String(e.customPay) : '',
-      late: e.late ?? false,
-      start: e.start ?? '18:00',
-      end: e.end ?? '22:00',
-      breakMinutes: String(e.breakMinutes),
       memo: e.memo ?? '',
     });
+  }
+
+  /** 한 직원의 입력값으로 기록 필드를 만든다. 문제가 있으면 오류 문자열을 돌려준다 */
+  function buildFields(
+    mode: Mode,
+    v: EmpValues,
+    memo: string | undefined,
+  ): Omit<WorkEntry, 'id' | 'date' | 'employeeId'> | string {
+    if (mode === 'sessions') {
+      const sessions = Number(v.sessions);
+      if (!Number.isInteger(sessions) || sessions < 1) return '수업 횟수를 선택하세요.';
+      // 수정으로 방식을 바꿀 수 있으니 다른 방식의 필드는 지운다
+      return {
+        sessions,
+        dcMinutes: undefined,
+        customPay: undefined,
+        start: undefined,
+        end: undefined,
+        breakMinutes: 0,
+        late: v.late || undefined,
+        memo,
+      };
+    }
+    if (mode === 'dc') {
+      const hours = Number(v.dcHours);
+      if (!Number.isFinite(hours) || hours <= 0) return 'DC 업무 시간을 입력하세요.';
+      return {
+        sessions: undefined,
+        dcMinutes: Math.round(hours * 60),
+        customPay: undefined,
+        start: undefined,
+        end: undefined,
+        breakMinutes: 0,
+        late: v.late || undefined,
+        memo,
+      };
+    }
+    if (mode === 'custom') {
+      const amount = Number(v.customPay);
+      if (!Number.isFinite(amount) || amount <= 0) return '그날 지급할 금액을 입력하세요.';
+      return {
+        sessions: undefined,
+        dcMinutes: undefined,
+        customPay: Math.round(amount),
+        start: undefined,
+        end: undefined,
+        breakMinutes: 0,
+        late: undefined,
+        memo,
+      };
+    }
+    if (parseTime(v.start) === null || parseTime(v.end) === null) {
+      return '출퇴근 시각을 HH:MM 형식으로 입력하세요.';
+    }
+    const breakMinutes = Number(v.breakMinutes) || 0;
+    if (breakMinutes < 0) return '휴게시간은 0 이상이어야 합니다.';
+    const fields = {
+      sessions: undefined,
+      dcMinutes: undefined,
+      customPay: undefined,
+      start: v.start,
+      end: v.end,
+      breakMinutes,
+      late: v.late || undefined,
+      memo,
+    };
+    if (calcEntry({ id: '', date: '2000-01-01', employeeId: '', ...fields }).workMinutes === 0) {
+      return '근무시간이 0입니다. 시각과 휴게시간을 확인하세요.';
+    }
+    return fields;
   }
 
   function save() {
@@ -136,95 +222,40 @@ export function WorkTab({ data, month, update }: Props) {
       setError('달력에서 날짜를 하나 이상 선택하세요.');
       return;
     }
-    let fields: Omit<WorkEntry, 'id' | 'date' | 'employeeId'>;
-    if (draft.mode === 'sessions') {
-      const sessions = Number(draft.sessions);
-      if (!Number.isInteger(sessions) || sessions < 1) {
-        setError('수업 횟수를 선택하세요.');
+    const memo = draft.memo.trim() || undefined;
+    const many = draft.employeeIds.length > 1;
+    const perEmpFields = new Map<string, Omit<WorkEntry, 'id' | 'date' | 'employeeId'>>();
+    for (const id of draft.employeeIds) {
+      const result = buildFields(draft.mode, draft.perEmp[id] ?? defaultValues(), memo);
+      if (typeof result === 'string') {
+        setError(many ? `${nameOf(id)}: ${result}` : result);
         return;
       }
-      // 수정으로 방식을 바꿀 수 있으니 다른 방식의 필드는 지운다
-      fields = {
-        sessions,
-        dcMinutes: undefined,
-        customPay: undefined,
-        start: undefined,
-        end: undefined,
-        breakMinutes: 0,
-        late: draft.late || undefined,
-        memo: draft.memo.trim() || undefined,
-      };
-    } else if (draft.mode === 'dc') {
-      const hours = Number(draft.dcHours);
-      if (!Number.isFinite(hours) || hours <= 0) {
-        setError('DC 업무 시간을 입력하세요.');
-        return;
-      }
-      fields = {
-        sessions: undefined,
-        dcMinutes: Math.round(hours * 60),
-        customPay: undefined,
-        start: undefined,
-        end: undefined,
-        breakMinutes: 0,
-        late: draft.late || undefined,
-        memo: draft.memo.trim() || undefined,
-      };
-    } else if (draft.mode === 'custom') {
-      const amount = Number(draft.customPay);
-      if (!Number.isFinite(amount) || amount <= 0) {
-        setError('그날 지급할 금액을 입력하세요.');
-        return;
-      }
-      fields = {
-        sessions: undefined,
-        dcMinutes: undefined,
-        customPay: Math.round(amount),
-        start: undefined,
-        end: undefined,
-        breakMinutes: 0,
-        late: undefined,
-        memo: draft.memo.trim() || undefined,
-      };
-    } else {
-      if (parseTime(draft.start) === null || parseTime(draft.end) === null) {
-        setError('출퇴근 시각을 HH:MM 형식으로 입력하세요.');
-        return;
-      }
-      const breakMinutes = Number(draft.breakMinutes) || 0;
-      if (breakMinutes < 0) {
-        setError('휴게시간은 0 이상이어야 합니다.');
-        return;
-      }
-      fields = {
-        sessions: undefined,
-        dcMinutes: undefined,
-        customPay: undefined,
-        start: draft.start,
-        end: draft.end,
-        breakMinutes,
-        late: draft.late || undefined,
-        memo: draft.memo.trim() || undefined,
-      };
-      const check = { id: '', date: draft.dates[0], employeeId: draft.employeeIds[0], ...fields };
-      if (calcEntry(check).workMinutes === 0) {
-        setError('근무시간이 0입니다. 시각과 휴게시간을 확인하세요.');
-        return;
-      }
+      perEmpFields.set(id, result);
     }
     update((prev) => ({
       ...prev,
       entries: draft.id
         ? prev.entries.map((e) =>
             e.id === draft.id
-              ? { ...e, ...fields, employeeId: draft.employeeIds[0], date: draft.dates[0] }
+              ? {
+                  ...e,
+                  ...perEmpFields.get(draft.employeeIds[0])!,
+                  employeeId: draft.employeeIds[0],
+                  date: draft.dates[0],
+                }
               : e,
           )
         : [
             ...prev.entries,
-            // 선택한 직원 × 날짜 조합을 한 번에 등록한다
+            // 선택한 직원 × 날짜 조합을 한 번에 등록한다 (직원별 입력값 각각 적용)
             ...draft.employeeIds.flatMap((employeeId) =>
-              draft.dates.map((date) => ({ id: newId('ent-'), employeeId, date, ...fields })),
+              draft.dates.map((date) => ({
+                id: newId('ent-'),
+                employeeId,
+                date,
+                ...perEmpFields.get(employeeId)!,
+              })),
             ),
           ],
     }));
@@ -235,14 +266,39 @@ export function WorkTab({ data, month, update }: Props) {
   function toggleEmployee(id: string) {
     setDraft((prev) => {
       if (!prev) return prev;
-      if (prev.id) return { ...prev, employeeIds: [id] };
+      if (prev.id) {
+        return {
+          ...prev,
+          employeeIds: [id],
+          perEmp: { [id]: prev.perEmp[prev.employeeIds[0]] ?? defaultValues() },
+        };
+      }
+      if (prev.employeeIds.includes(id)) {
+        return { ...prev, employeeIds: prev.employeeIds.filter((x) => x !== id) };
+      }
+      // 새로 추가하는 직원은 첫 번째 직원의 값을 복사해서 시작 (없으면 기본값)
+      const base = prev.perEmp[prev.employeeIds[0]] ?? defaultValues();
       return {
         ...prev,
-        employeeIds: prev.employeeIds.includes(id)
-          ? prev.employeeIds.filter((x) => x !== id)
-          : [...prev.employeeIds, id],
+        employeeIds: [...prev.employeeIds, id],
+        perEmp: { ...prev.perEmp, [id]: { ...(prev.perEmp[id] ?? base) } },
       };
     });
+  }
+
+  /** 직원별 입력값 수정 */
+  function setEmpValue(id: string, patch: Partial<EmpValues>) {
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            perEmp: {
+              ...prev.perEmp,
+              [id]: { ...(prev.perEmp[id] ?? defaultValues()), ...patch },
+            },
+          }
+        : prev,
+    );
   }
 
   /** 달력 날짜 클릭: 새 기록은 여러 날 토글, 수정은 한 날짜 교체 */
@@ -272,6 +328,88 @@ export function WorkTab({ data, month, update }: Props) {
     (s, e) => s + calcEntry(e, data.settings.minutesPerSession).dcMinutes,
     0,
   );
+
+  /** 직원 한 명의 입력 줄 (여러 명이면 이름과 함께 표시) */
+  function renderEmpRow(id: string, showName: boolean) {
+    if (!draft) return null;
+    const v = draft.perEmp[id] ?? defaultValues();
+    return (
+      <div className="emp-values" key={id}>
+        {showName && <span className="emp-values-name">{nameOf(id)}</span>}
+        {draft.mode === 'custom' ? (
+          <label>그날 급여 (원)
+            <input
+              type="number"
+              min={0}
+              step={10}
+              value={v.customPay}
+              onChange={(e) => setEmpValue(id, { customPay: e.target.value })}
+              placeholder="예: 50000"
+            />
+          </label>
+        ) : draft.mode === 'dc' ? (
+          <label>DC 업무 시간 (시간)
+            <input
+              type="number"
+              min={0.5}
+              step={0.5}
+              value={v.dcHours}
+              onChange={(e) => setEmpValue(id, { dcHours: e.target.value })}
+            />
+          </label>
+        ) : draft.mode === 'sessions' ? (
+          <label>수업 횟수
+            <select
+              value={v.sessions}
+              onChange={(e) => setEmpValue(id, { sessions: e.target.value })}
+            >
+              {[1, 2, 3, 4].map((n) => (
+                <option key={n} value={n}>
+                  {n}회 ({fmtMinutes(n * data.settings.minutesPerSession)} 근무)
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <>
+            <label>출근
+              <input
+                type="time"
+                value={v.start}
+                onChange={(e) => setEmpValue(id, { start: e.target.value })}
+              />
+            </label>
+            <label>퇴근
+              <input
+                type="time"
+                value={v.end}
+                onChange={(e) => setEmpValue(id, { end: e.target.value })}
+              />
+            </label>
+            <label>휴게 (분)
+              <input
+                type="number"
+                min={0}
+                step={5}
+                value={v.breakMinutes}
+                onChange={(e) => setEmpValue(id, { breakMinutes: e.target.value })}
+              />
+            </label>
+          </>
+        )}
+        {draft.mode !== 'custom' && (
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={v.late}
+              onChange={(e) => setEmpValue(id, { late: e.target.checked })}
+            />
+            지각
+          </label>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="tab-body">
@@ -306,7 +444,7 @@ export function WorkTab({ data, month, update }: Props) {
 
       {entries.length === 0 ? (
         <p className="empty">
-          이 달의 근무 기록이 없습니다. ‘근무 추가’에서 달력의 여러 날을 골라 한 번에 등록할 수 있습니다.
+          이 달의 근무 기록이 없습니다. ‘근무 추가’에서 직원 여러 명과 달력의 여러 날을 골라 한 번에 등록할 수 있습니다.
         </p>
       ) : (
         <table className="list">
@@ -371,6 +509,7 @@ export function WorkTab({ data, month, update }: Props) {
       {draft && (
         <Modal
           title={draft.id ? '근무 기록 수정' : '근무 추가'}
+          wide={draft.employeeIds.length > 1}
           onClose={() => setDraft(null)}
           footer={
             <>
@@ -403,7 +542,8 @@ export function WorkTab({ data, month, update }: Props) {
               </div>
               {!draft.id && (
                 <p className="hint">
-                  직원을 여러 명 누르면 같은 내용으로 한 번에 등록됩니다. ({draft.employeeIds.length}명 선택)
+                  직원을 여러 명 누르면 한 번에 등록되고, 아래에서 직원마다 시간을 따로 넣을 수 있습니다.
+                  ({draft.employeeIds.length}명 선택)
                 </p>
               )}
             </div>
@@ -426,16 +566,14 @@ export function WorkTab({ data, month, update }: Props) {
               <p className="hint">
                 {draft.id
                   ? '날짜를 누르면 이 기록의 날짜가 바뀝니다.'
-                  : `날짜를 여러 개 누르면 같은 내용으로 한 번에 등록됩니다. (${draft.dates.length}일 선택)`}
+                  : `날짜를 여러 개 누르면 한 번에 등록됩니다. (${draft.dates.length}일 선택)`}
                 {' '}점이 있는 날은 이미 기록이 있는 날입니다.
               </p>
             </div>
             <label>기록 방식
               <select
                 value={draft.mode}
-                onChange={(e) =>
-                  setDraft({ ...draft, mode: e.target.value as Draft['mode'] })
-                }
+                onChange={(e) => setDraft({ ...draft, mode: e.target.value as Mode })}
               >
                 <option value="sessions">수업 횟수</option>
                 <option value="times">출퇴근 시각</option>
@@ -443,83 +581,19 @@ export function WorkTab({ data, month, update }: Props) {
                 <option value="custom">금액 직접 입력</option>
               </select>
             </label>
-            {draft.mode === 'custom' ? (
-              <label>그날 급여 (원)
-                <input
-                  type="number"
-                  min={0}
-                  step={10}
-                  value={draft.customPay}
-                  onChange={(e) => setDraft({ ...draft, customPay: e.target.value })}
-                  placeholder="예: 50000"
-                />
-              </label>
-            ) : draft.mode === 'dc' ? (
-              <label>DC 업무 시간 (시간)
-                <input
-                  type="number"
-                  min={0.5}
-                  step={0.5}
-                  value={draft.dcHours}
-                  onChange={(e) => setDraft({ ...draft, dcHours: e.target.value })}
-                />
-              </label>
-            ) : draft.mode === 'sessions' ? (
-              <label>수업 횟수
-                <select
-                  value={draft.sessions}
-                  onChange={(e) => setDraft({ ...draft, sessions: e.target.value })}
-                >
-                  {[1, 2, 3, 4].map((n) => (
-                    <option key={n} value={n}>
-                      {n}회 ({fmtMinutes(n * data.settings.minutesPerSession)} 근무)
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <>
-                <label>출근
-                  <input
-                    type="time"
-                    value={draft.start}
-                    onChange={(e) => setDraft({ ...draft, start: e.target.value })}
-                  />
-                </label>
-                <label>퇴근
-                  <input
-                    type="time"
-                    value={draft.end}
-                    onChange={(e) => setDraft({ ...draft, end: e.target.value })}
-                  />
-                </label>
-                <label>휴게시간 (분)
-                  <input
-                    type="number"
-                    min={0}
-                    step={5}
-                    value={draft.breakMinutes}
-                    onChange={(e) => setDraft({ ...draft, breakMinutes: e.target.value })}
-                  />
-                </label>
-              </>
-            )}
-            {draft.mode !== 'custom' && (
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={draft.late}
-                  onChange={(e) => setDraft({ ...draft, late: e.target.checked })}
-                />
-                지각 (그날 준비시간 {data.settings.latePrepDeductMinutes}분 차감)
-              </label>
-            )}
             <label>메모
               <input
                 value={draft.memo}
                 onChange={(e) => setDraft({ ...draft, memo: e.target.value })}
               />
             </label>
+            <div className="full-row">
+              {draft.employeeIds.length === 0 ? (
+                <p className="hint">위에서 직원을 선택하면 입력 칸이 나옵니다.</p>
+              ) : (
+                draft.employeeIds.map((id) => renderEmpRow(id, draft.employeeIds.length > 1))
+              )}
+            </div>
           </div>
           {draft.mode === 'custom' ? (
             <p className="hint">
@@ -534,10 +608,13 @@ export function WorkTab({ data, month, update }: Props) {
           ) : draft.mode === 'sessions' ? (
             <p className="hint">
               수업 1회 = {fmtMinutes(data.settings.minutesPerSession)} 근무로 계산합니다.
-              (설정에서 변경 가능)
+              지각한 날은 준비시간에서 {data.settings.latePrepDeductMinutes}분을 차감합니다.
             </p>
           ) : (
-            <p className="hint">퇴근 시각이 출근보다 빠르면 다음 날 퇴근(자정 넘김)으로 계산합니다.</p>
+            <p className="hint">
+              퇴근 시각이 출근보다 빠르면 다음 날 퇴근(자정 넘김)으로 계산합니다.
+              지각한 날은 준비시간에서 {data.settings.latePrepDeductMinutes}분을 차감합니다.
+            </p>
           )}
         </Modal>
       )}
