@@ -336,13 +336,15 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
       {slip.weeks.length > 0 && (
         <table className="payslip-table work-detail">
           <thead>
-            <tr><th>주 (월~일)</th><th>근무</th><th>연장</th><th>주휴</th></tr>
+            <tr><th>주 (월~일)</th><th>근무</th><th>DC</th><th>준비</th><th>연장</th><th>주휴</th></tr>
           </thead>
           <tbody>
             {slip.weeks.map((w) => (
               <tr key={w.weekStart}>
                 <td>{weekLabel(w.weekStart)}</td>
                 <td className="num">{fmtMinutes(w.minutes)}</td>
+                <td className="num">{w.dcMinutes > 0 ? fmtMinutes(w.dcMinutes) : '-'}</td>
+                <td className="num">{w.prepMinutes > 0 ? fmtMinutes(w.prepMinutes) : '-'}</td>
                 <td className="num">{w.overtimeMinutes > 0 ? fmtMinutes(w.overtimeMinutes) : '-'}</td>
                 <td className="num">{w.allowanceMinutes > 0 ? fmtMinutes(w.allowanceMinutes) : '-'}</td>
               </tr>
@@ -353,8 +355,9 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
 
       <p className="payslip-note">
         연장·주휴수당은 주(월~일) 단위로 계산해 그 주 일요일이 속한 달에 반영합니다.
-        준비시간은 출근일마다 붙는 별도 수당으로 주휴·연장 계산에는 넣지 않습니다.
-        {slip.dcPay > 0 && ' DC 업무는 DC 시급으로 따로 계산하며 주휴·연장에 포함하지 않습니다.'}
+        주휴는 근무·DC 업무·준비시간을 모두 합한 시간(주 15시간 이상)으로 판정하고,
+        연장은 수업·출퇴근 근무시간만으로 계산합니다.
+        {slip.dcPay > 0 && ' DC 업무 급여는 DC 시급으로 따로 계산합니다.'}
         {!s.over5 && ' 5인 미만 사업장 설정으로 연장·야간 가산수당은 적용하지 않았습니다.'}
       </p>
 
