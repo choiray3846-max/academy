@@ -231,6 +231,8 @@ table.list tr.total-row td { font-weight: 700; background: var(--bg-2); }
 
 /* 근무 추가 미니 달력 */
 .full-row { grid-column: 1 / -1; }
+.emp-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.chips-label { font-size: 13px; color: var(--text-2); margin-right: 4px; }
 .mini-cal {
   border: 1px solid var(--border);
   border-radius: 8px;
