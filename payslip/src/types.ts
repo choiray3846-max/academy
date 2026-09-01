@@ -29,8 +29,12 @@ export interface Employee {
   name: string;
   /** 시급 (원) */
   hourlyWage: number;
+  /** 준비시간 수당 적용 여부. undefined는 적용(기존 데이터 호환) */
+  prepEnabled?: boolean;
   /** 준비시간 시급 (원). 없으면 기본 시급과 같게 계산 */
   prepWage?: number;
+  /** DC 업무 시급 (원). 없으면 기본 시급과 같게 계산 */
+  dcWage?: number;
   payType: PayType;
   /** 주휴수당 자동 계산 여부 (주 15시간 이상인 주만 발생) */
   weeklyAllowance: boolean;
@@ -52,6 +56,11 @@ export interface WorkEntry {
    * (1회 = 1시간 30분, 2회 = 3시간)
    */
   sessions?: number;
+  /**
+   * DC 업무 기록(분). 값이 있으면 수업이 아닌 DC 업무로,
+   * 직원별 DC 시급으로 따로 계산한다. 주휴·연장에는 넣지 않는다.
+   */
+  dcMinutes?: number;
   start?: TimeStr;
   /** 시작보다 빠르면 다음 날 퇴근(자정 넘김)으로 본다 */
   end?: TimeStr;

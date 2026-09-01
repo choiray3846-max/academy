@@ -182,6 +182,13 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
       amount: slip.prepPay,
     });
   }
+  if (slip.dcPay > 0) {
+    payRows.push({
+      label: 'DC 업무',
+      detail: `${fmtMinutes(slip.dcMinutes)} × ${fmtWon(employee.dcWage ?? wage)}`,
+      amount: slip.dcPay,
+    });
+  }
   for (const a of slip.extraPays) {
     payRows.push({ label: a.label, detail: '추가 지급', amount: a.amount });
   }
@@ -208,6 +215,9 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
               {fmtWon(wage)}
               {employee.prepWage != null && employee.prepWage !== wage
                 ? ` (준비 ${fmtWon(employee.prepWage)})`
+                : ''}
+              {employee.dcWage != null && employee.dcWage !== wage
+                ? ` (DC ${fmtWon(employee.dcWage)})`
                 : ''}
             </td>
             <th>공제 방식</th>
@@ -281,7 +291,9 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
               return (
                 <tr key={e.id}>
                   <td>{shortDate(e.date)}</td>
-                  {e.sessions ? (
+                  {e.dcMinutes ? (
+                    <td colSpan={3}>DC 업무</td>
+                  ) : e.sessions ? (
                     <td colSpan={3}>수업 {e.sessions}회</td>
                   ) : (
                     <>
@@ -290,7 +302,9 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
                       <td className="num">{e.breakMinutes > 0 ? `${e.breakMinutes}분` : '-'}</td>
                     </>
                   )}
-                  <td className="num">{fmtMinutes(c.workMinutes)}</td>
+                  <td className="num">
+                    {c.dcMinutes > 0 ? `DC ${fmtMinutes(c.dcMinutes)}` : fmtMinutes(c.workMinutes)}
+                  </td>
                   <td className="num">{c.nightMinutes > 0 ? fmtMinutes(c.nightMinutes) : '-'}</td>
                 </tr>
               );
@@ -320,6 +334,7 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
       <p className="payslip-note">
         연장·주휴수당은 주(월~일) 단위로 계산해 그 주 일요일이 속한 달에 반영합니다.
         준비시간은 출근일마다 붙는 별도 수당으로 주휴·연장 계산에는 넣지 않습니다.
+        {slip.dcPay > 0 && ' DC 업무는 DC 시급으로 따로 계산하며 주휴·연장에 포함하지 않습니다.'}
         {!s.over5 && ' 5인 미만 사업장 설정으로 연장·야간 가산수당은 적용하지 않았습니다.'}
       </p>
 

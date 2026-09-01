@@ -30,9 +30,11 @@ interface Draft {
   dates: DateStr[];
   /** 달력에 표시 중인 달 */
   calMonth: MonthStr;
-  /** 'sessions' = 수업 횟수로 기록, 'times' = 출퇴근 시각으로 기록 */
-  mode: 'sessions' | 'times';
+  /** 'sessions' = 수업 횟수, 'times' = 출퇴근 시각, 'dc' = DC 업무(시간만) */
+  mode: 'sessions' | 'times' | 'dc';
   sessions: string;
+  /** DC 업무 시간 (시간 단위, 0.5 단위 입력) */
+  dcHours: string;
   start: string;
   end: string;
   breakMinutes: string;
@@ -82,13 +84,13 @@ export function WorkTab({ data, month, update }: Props) {
       return;
     }
     setError('');
-    const now = today();
     setDraft({
       employeeId: employeeId || employees[0].id,
-      dates: [monthOf(now) === month ? now : `${month}-01`],
+      dates: [],
       calMonth: month,
       mode: 'sessions',
       sessions: '1',
+      dcHours: '1',
       start: '18:00',
       end: '22:00',
       breakMinutes: '0',
@@ -103,8 +105,9 @@ export function WorkTab({ data, month, update }: Props) {
       employeeId: e.employeeId,
       dates: [e.date],
       calMonth: monthOf(e.date),
-      mode: e.sessions ? 'sessions' : 'times',
+      mode: e.dcMinutes ? 'dc' : e.sessions ? 'sessions' : 'times',
       sessions: String(e.sessions ?? 1),
+      dcHours: String((e.dcMinutes ?? 60) / 60),
       start: e.start ?? '18:00',
       end: e.end ?? '22:00',
       breakMinutes: String(e.breakMinutes),
@@ -133,6 +136,22 @@ export function WorkTab({ data, month, update }: Props) {
       fields = {
         employeeId: draft.employeeId,
         sessions,
+        dcMinutes: undefined,
+        start: undefined,
+        end: undefined,
+        breakMinutes: 0,
+        memo: draft.memo.trim() || undefined,
+      };
+    } else if (draft.mode === 'dc') {
+      const hours = Number(draft.dcHours);
+      if (!Number.isFinite(hours) || hours <= 0) {
+        setError('DC 업무 시간을 입력하세요.');
+        return;
+      }
+      fields = {
+        employeeId: draft.employeeId,
+        sessions: undefined,
+        dcMinutes: Math.round(hours * 60),
         start: undefined,
         end: undefined,
         breakMinutes: 0,
@@ -151,6 +170,7 @@ export function WorkTab({ data, month, update }: Props) {
       fields = {
         employeeId: draft.employeeId,
         sessions: undefined,
+        dcMinutes: undefined,
         start: draft.start,
         end: draft.end,
         breakMinutes,
@@ -196,6 +216,10 @@ export function WorkTab({ data, month, update }: Props) {
 
   const totalMinutes = entries.reduce(
     (s, e) => s + calcEntry(e, data.settings.minutesPerSession).workMinutes,
+    0,
+  );
+  const totalDcMinutes = entries.reduce(
+    (s, e) => s + calcEntry(e, data.settings.minutesPerSession).dcMinutes,
     0,
   );
 
@@ -250,7 +274,9 @@ export function WorkTab({ data, month, update }: Props) {
                 <tr key={e.id}>
                   <td>{shortDate(e.date)}</td>
                   <td>{nameOf(e.employeeId)}</td>
-                  {e.sessions ? (
+                  {e.dcMinutes ? (
+                    <td colSpan={3}>DC 업무</td>
+                  ) : e.sessions ? (
                     <td colSpan={3}>수업 {e.sessions}회</td>
                   ) : (
                     <>
@@ -259,7 +285,9 @@ export function WorkTab({ data, month, update }: Props) {
                       <td className="num">{e.breakMinutes > 0 ? `${e.breakMinutes}분` : '-'}</td>
                     </>
                   )}
-                  <td className="num">{fmtMinutes(c.workMinutes)}</td>
+                  <td className="num">
+                    {c.dcMinutes > 0 ? `DC ${fmtMinutes(c.dcMinutes)}` : fmtMinutes(c.workMinutes)}
+                  </td>
                   <td className="num">{c.nightMinutes > 0 ? fmtMinutes(c.nightMinutes) : '-'}</td>
                   <td>{e.memo ?? ''}</td>
                   <td className="actions">
@@ -271,7 +299,10 @@ export function WorkTab({ data, month, update }: Props) {
             })}
             <tr className="total-row">
               <td colSpan={5}>합계 ({entries.length}건)</td>
-              <td className="num">{fmtMinutes(totalMinutes)}</td>
+              <td className="num">
+                {fmtMinutes(totalMinutes)}
+                {totalDcMinutes > 0 ? ` + DC ${fmtMinutes(totalDcMinutes)}` : ''}
+              </td>
               <td colSpan={3} />
             </tr>
           </tbody>
@@ -334,9 +365,20 @@ export function WorkTab({ data, month, update }: Props) {
               >
                 <option value="sessions">수업 횟수</option>
                 <option value="times">출퇴근 시각</option>
+                <option value="dc">DC 업무</option>
               </select>
             </label>
-            {draft.mode === 'sessions' ? (
+            {draft.mode === 'dc' ? (
+              <label>DC 업무 시간 (시간)
+                <input
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  value={draft.dcHours}
+                  onChange={(e) => setDraft({ ...draft, dcHours: e.target.value })}
+                />
+              </label>
+            ) : draft.mode === 'sessions' ? (
               <label>수업 횟수
                 <select
                   value={draft.sessions}
@@ -383,7 +425,12 @@ export function WorkTab({ data, month, update }: Props) {
               />
             </label>
           </div>
-          {draft.mode === 'sessions' ? (
+          {draft.mode === 'dc' ? (
+            <p className="hint">
+              DC 업무는 입력한 시간 × 직원별 DC 시급으로 계산합니다.
+              (DC 시급은 직원 탭에서 설정, 비우면 기본 시급)
+            </p>
+          ) : draft.mode === 'sessions' ? (
             <p className="hint">
               수업 1회 = {fmtMinutes(data.settings.minutesPerSession)} 근무로 계산합니다.
               (설정에서 변경 가능)

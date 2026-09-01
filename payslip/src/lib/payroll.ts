@@ -12,6 +12,9 @@
  * - 준비시간: 근무 기록이 있는 날마다 출근일당 준비시간(설정, 기본 30분)을
  *   직원별 준비 시급(없으면 기본 시급)으로 지급. 별도 수당이라
  *   주휴·연장 계산에는 넣지 않는다.
+ * - DC 업무: 시간만 기록하고 직원별 DC 시급(없으면 기본 시급)으로 지급.
+ *   수업과 급여가 달라 기본급·주휴·연장 계산과 분리한다.
+ *   DC만 있는 날도 출근일로 세어 준비시간은 붙는다.
  * - 세금·보험료는 10원 미만 절사(국고금 단수 계산 관례).
  */
 import type {
@@ -40,10 +43,12 @@ export function parseTime(t: string): number | null {
 
 export interface EntryCalc {
   entry: WorkEntry;
-  /** 휴게를 뺀 실제 근무 분 */
+  /** 휴게를 뺀 실제 근무 분 (DC 업무는 제외) */
   workMinutes: number;
   /** 22~06시와 겹치는 분 (휴게 비례 차감) */
   nightMinutes: number;
+  /** DC 업무 분 — 기본급·주휴·연장과 분리해 DC 시급으로 계산 */
+  dcMinutes: number;
 }
 
 /** 야간(22:00~06:00) 구간. 자정 넘김 근무를 위해 이틀치 창을 본다 */
@@ -59,14 +64,22 @@ export function calcEntry(
   entry: WorkEntry,
   minutesPerSession = DEFAULT_MINUTES_PER_SESSION,
 ): EntryCalc {
+  if (entry.dcMinutes && entry.dcMinutes > 0) {
+    return { entry, workMinutes: 0, nightMinutes: 0, dcMinutes: entry.dcMinutes };
+  }
   if (entry.sessions && entry.sessions > 0) {
     // 수업 횟수 기록: 횟수 × 회당 근무시간. 시각이 없으니 야간은 0
-    return { entry, workMinutes: entry.sessions * minutesPerSession, nightMinutes: 0 };
+    return {
+      entry,
+      workMinutes: entry.sessions * minutesPerSession,
+      nightMinutes: 0,
+      dcMinutes: 0,
+    };
   }
   const start = parseTime(entry.start ?? '');
   let end = parseTime(entry.end ?? '');
   if (start === null || end === null) {
-    return { entry, workMinutes: 0, nightMinutes: 0 };
+    return { entry, workMinutes: 0, nightMinutes: 0, dcMinutes: 0 };
   }
   if (end <= start) end += 24 * 60; // 다음 날 퇴근
   const span = end - start;
@@ -76,7 +89,7 @@ export function calcEntry(
     nightRaw += Math.max(0, Math.min(end, b) - Math.max(start, a));
   }
   const nightMinutes = span === 0 ? 0 : Math.round((nightRaw * workMinutes) / span);
-  return { entry, workMinutes, nightMinutes };
+  return { entry, workMinutes, nightMinutes, dcMinutes: 0 };
 }
 
 export interface WeekSummary {
@@ -161,6 +174,8 @@ export interface Payslip {
   prepDays: number;
   prepMinutes: number;
   prepPay: number;
+  dcMinutes: number;
+  dcPay: number;
   extraPays: Adjustment[];
   extraDeducts: Adjustment[];
   grossPay: number;
@@ -223,7 +238,7 @@ export function calcPayslip(
     .map((e) => calcEntry(e, settings.minutesPerSession));
 
   for (const c of monthEntries) {
-    if (c.workMinutes === 0) {
+    if (c.workMinutes === 0 && c.dcMinutes === 0) {
       warnings.push(`${c.entry.date} 기록의 시각이 올바르지 않아 0시간으로 계산했습니다.`);
     }
   }
@@ -243,12 +258,22 @@ export function calcPayslip(
   const nightPay = settings.over5 ? toPay(nightMinutes, employee.hourlyWage, 0.5) : 0;
   const allowancePay = toPay(allowanceMinutes, employee.hourlyWage);
 
-  // 준비시간: 근무 기록이 있는 날마다 (같은 날 여러 기록이어도 1일)
-  const prepDays = new Set(
-    monthEntries.filter((c) => c.workMinutes > 0).map((c) => c.entry.date),
-  ).size;
+  // 준비시간: 근무 기록이 있는 날마다 (같은 날 여러 기록이어도 1일, DC만 있는 날도 출근)
+  // 직원별로 적용을 끌 수 있다 (prepEnabled === false)
+  const prepDays =
+    employee.prepEnabled === false
+      ? 0
+      : new Set(
+          monthEntries
+            .filter((c) => c.workMinutes > 0 || c.dcMinutes > 0)
+            .map((c) => c.entry.date),
+        ).size;
   const prepMinutes = prepDays * settings.prepMinutesPerDay;
   const prepPay = toPay(prepMinutes, employee.prepWage ?? employee.hourlyWage);
+
+  // DC 업무: 직원별 DC 시급으로 계산 (없으면 기본 시급)
+  const dcMinutes = monthEntries.reduce((s, c) => s + c.dcMinutes, 0);
+  const dcPay = toPay(dcMinutes, employee.dcWage ?? employee.hourlyWage);
 
   const monthAdjustments = data.adjustments.filter(
     (a) => a.employeeId === employee.id && a.month === month,
@@ -258,7 +283,7 @@ export function calcPayslip(
   const extraPayTotal = extraPays.reduce((s, a) => s + a.amount, 0);
 
   const grossPay =
-    basePay + overtimePay + nightPay + allowancePay + prepPay + extraPayTotal;
+    basePay + overtimePay + nightPay + allowancePay + prepPay + dcPay + extraPayTotal;
 
   const deductions = calcDeductions(employee, grossPay, settings);
   const totalDeduction =
@@ -296,6 +321,8 @@ export function calcPayslip(
     prepDays,
     prepMinutes,
     prepPay,
+    dcMinutes,
+    dcPay,
     extraPays,
     extraDeducts,
     grossPay,
