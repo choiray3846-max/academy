@@ -95,13 +95,13 @@ export function WorkTab({ data, month, update }: Props) {
   // 이 달과 겹치는 주들의 요약 (직원을 골랐을 때만)
   const weeks = useMemo(() => {
     if (!selected) return [];
-    return weekSummaries(data.entries, selected, data.settings.minutesPerSession).filter((w) => {
+    return weekSummaries(data.entries, selected, data.settings).filter((w) => {
       for (let i = 0; i < 7; i++) {
         if (monthOf(addDays(w.weekStart, i)) === month) return true;
       }
       return false;
     });
-  }, [data.entries, data.settings.minutesPerSession, selected, month]);
+  }, [data.entries, data.settings, selected, month]);
 
   function openNew() {
     if (employees.length === 0) {
@@ -431,6 +431,8 @@ export function WorkTab({ data, month, update }: Props) {
             <div key={w.weekStart} className="week-card">
               <div className="week-card-title">{weekLabel(w.weekStart)}</div>
               <div>근무 {fmtMinutes(w.minutes)}</div>
+              {w.dcMinutes > 0 && <div>DC {fmtMinutes(w.dcMinutes)}</div>}
+              {w.prepMinutes > 0 && <div>준비 {fmtMinutes(w.prepMinutes)}</div>}
               {w.overtimeMinutes > 0 && <div>연장 {fmtMinutes(w.overtimeMinutes)}</div>}
               <div className={w.allowanceMinutes > 0 ? 'ok-text' : 'muted-text'}>
                 {w.allowanceMinutes > 0

@@ -7,13 +7,14 @@
  * - 연장근로: 1일 8시간 초과분 + (주 전체 - 1일 초과분)이 40시간을 넘는 부분.
  * - 야간근로: 22:00~06:00와 겹치는 시간. 휴게시간은 근무시간 비율로 차감한다.
  * - 연장·야간 가산(시급의 50%)은 상시 5인 이상 사업장일 때만 지급 의무가 있다.
- * - 주휴수당: 주 15시간 이상 근무(연장 제외)한 주에
- *   min(주 근무시간, 40) / 40 × 8시간 × 시급.
+ * - 주휴수당: 주 15시간 이상 일한 주에
+ *   min(주 시간, 40) / 40 × 8시간 × 기본 시급.
+ *   주 시간에는 수업·출퇴근 근무(연장 제외)와 DC 업무, 준비시간을 모두 넣는다.
  * - 준비시간: 근무 기록이 있는 날마다 출근일당 준비시간(설정, 기본 30분)을
- *   직원별 준비 시급(없으면 기본 시급)으로 지급. 별도 수당이라
- *   주휴·연장 계산에는 넣지 않는다.
+ *   직원별 준비 시급(없으면 기본 시급)으로 지급.
+ *   주휴 계산에는 들어가지만 연장 계산에는 넣지 않는다.
  * - DC 업무: 시간만 기록하고 직원별 DC 시급(없으면 기본 시급)으로 지급.
- *   수업과 급여가 달라 기본급·주휴·연장 계산과 분리한다.
+ *   수업과 급여가 달라 기본급·연장 계산과는 분리하되 주휴 계산에는 넣는다.
  *   DC만 있는 날도 출근일로 세어 준비시간은 붙는다.
  * - 세금·보험료는 10원 미만 절사(국고금 단수 계산 관례).
  */
@@ -101,46 +102,91 @@ export function calcEntry(
 export interface WeekSummary {
   /** 그 주 월요일 */
   weekStart: DateStr;
-  /** 주 전체 근무 분 (달 경계와 무관) */
+  /** 주 전체 근무 분 — 수업·출퇴근 기록 (달 경계와 무관) */
   minutes: number;
+  /** 그 주의 DC 업무 분 (주휴 계산에 포함) */
+  dcMinutes: number;
+  /** 그 주의 준비시간 분, 지각 차감 반영 (주휴 계산에 포함) */
+  prepMinutes: number;
   overtimeMinutes: number;
   /** 주휴수당으로 환산되는 분 (미발생이면 0) */
   allowanceMinutes: number;
 }
+
+/** 주 단위 계산에 필요한 설정 값 */
+export interface WeekCalcSettings {
+  minutesPerSession: number;
+  prepMinutesPerDay: number;
+  latePrepDeductMinutes: number;
+}
+
+const DEFAULT_WEEK_SETTINGS: WeekCalcSettings = {
+  minutesPerSession: DEFAULT_MINUTES_PER_SESSION,
+  prepMinutesPerDay: 0,
+  latePrepDeductMinutes: 0,
+};
 
 /** 한 주(월~일) 근무를 요약한다. entries는 그 주의 기록만 */
 function summarizeWeek(
   weekStart: DateStr,
   entries: WorkEntry[],
   allowanceEnabled: boolean,
-  minutesPerSession: number,
+  s: WeekCalcSettings,
 ): WeekSummary {
   const byDay = new Map<DateStr, number>();
   let total = 0;
+  let dcTotal = 0;
+  const attendedDays = new Set<DateStr>();
+  const lateDays = new Set<DateStr>();
   for (const e of entries) {
-    const { workMinutes } = calcEntry(e, minutesPerSession);
+    const { workMinutes, dcMinutes } = calcEntry(e, s.minutesPerSession);
     byDay.set(e.date, (byDay.get(e.date) ?? 0) + workMinutes);
     total += workMinutes;
+    dcTotal += dcMinutes;
+    if (workMinutes > 0 || dcMinutes > 0) {
+      attendedDays.add(e.date);
+      if (e.late) lateDays.add(e.date);
+    }
   }
+  // 연장은 수업·출퇴근 근무시간만으로 계산한다
   let dailyOver = 0;
   for (const minutes of byDay.values()) dailyOver += Math.max(0, minutes - DAY_LIMIT);
   const weeklyOver = Math.max(0, total - dailyOver - WEEK_LIMIT);
   const overtimeMinutes = dailyOver + weeklyOver;
 
-  const regular = total - overtimeMinutes;
+  // 그 주 준비시간 (지급 계산과 같은 규칙: 출근일 × 일당 준비시간 − 지각 차감)
+  const lateDeduct = Math.min(s.latePrepDeductMinutes, s.prepMinutesPerDay);
+  const prepMinutes = attendedDays.size * s.prepMinutesPerDay - lateDays.size * lateDeduct;
+
+  // 주휴는 (연장 제외 근무) + DC + 준비시간을 모두 넣어 계산한다
+  const regular = total - overtimeMinutes + dcTotal + prepMinutes;
   const allowanceMinutes =
     allowanceEnabled && regular >= ALLOWANCE_MIN
       ? Math.round((Math.min(regular, WEEK_LIMIT) / WEEK_LIMIT) * DAY_LIMIT)
       : 0;
-  return { weekStart, minutes: total, overtimeMinutes, allowanceMinutes };
+  return {
+    weekStart,
+    minutes: total,
+    dcMinutes: dcTotal,
+    prepMinutes,
+    overtimeMinutes,
+    allowanceMinutes,
+  };
 }
 
 /** 직원의 전체 기록을 주 단위로 묶어 요약한다 */
 export function weekSummaries(
   allEntries: WorkEntry[],
   employee: Employee,
-  minutesPerSession = DEFAULT_MINUTES_PER_SESSION,
+  settings: Partial<WeekCalcSettings> = {},
 ): WeekSummary[] {
+  const s: WeekCalcSettings = {
+    ...DEFAULT_WEEK_SETTINGS,
+    ...settings,
+    // 준비수당 미적용 직원은 준비시간도 주휴 계산에 넣지 않는다
+    prepMinutesPerDay:
+      employee.prepEnabled === false ? 0 : settings.prepMinutesPerDay ?? 0,
+  };
   const byWeek = new Map<DateStr, WorkEntry[]>();
   for (const e of allEntries) {
     if (e.employeeId !== employee.id) continue;
@@ -151,9 +197,7 @@ export function weekSummaries(
   }
   return [...byWeek.entries()]
     .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([ws, list]) =>
-      summarizeWeek(ws, list, employee.weeklyAllowance, minutesPerSession),
-    );
+    .map(([ws, list]) => summarizeWeek(ws, list, employee.weeklyAllowance, s));
 }
 
 export interface DeductionItem {
@@ -259,7 +303,7 @@ export function calcPayslip(
   const basePay = toPay(workMinutes, employee.hourlyWage);
 
   // 주 단위 항목: 일요일이 이 달인 주만 반영
-  const weeks = weekSummaries(data.entries, employee, settings.minutesPerSession).filter(
+  const weeks = weekSummaries(data.entries, employee, settings).filter(
     (w) => monthOf(addDays(w.weekStart, 6)) === month,
   );
   const overtimeMinutes = weeks.reduce((s, w) => s + w.overtimeMinutes, 0);
