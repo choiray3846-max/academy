@@ -14,7 +14,9 @@ interface Draft {
   id?: string;
   name: string;
   hourlyWage: string;
+  prepEnabled: boolean;
   prepWage: string;
+  dcWage: string;
   payType: PayType;
   weeklyAllowance: boolean;
   joinDate: string;
@@ -26,7 +28,9 @@ interface Draft {
 const emptyDraft = (minWage: number): Draft => ({
   name: '',
   hourlyWage: String(minWage),
+  prepEnabled: true,
   prepWage: '',
+  dcWage: '',
   payType: 'freelance',
   weeklyAllowance: true,
   joinDate: '',
@@ -53,7 +57,9 @@ export function EmployeesTab({ data, update }: Props) {
       id: e.id,
       name: e.name,
       hourlyWage: String(e.hourlyWage),
+      prepEnabled: e.prepEnabled !== false,
       prepWage: e.prepWage != null ? String(e.prepWage) : '',
+      dcWage: e.dcWage != null ? String(e.dcWage) : '',
       payType: e.payType,
       weeklyAllowance: e.weeklyAllowance,
       joinDate: e.joinDate ?? '',
@@ -80,10 +86,17 @@ export function EmployeesTab({ data, update }: Props) {
       setError('준비시간 시급을 숫자로 입력하세요.');
       return;
     }
+    const dcWage = draft.dcWage.trim() === '' ? undefined : Number(draft.dcWage);
+    if (dcWage !== undefined && (!Number.isFinite(dcWage) || dcWage < 0)) {
+      setError('DC 시급을 숫자로 입력하세요.');
+      return;
+    }
     const fields = {
       name,
       hourlyWage: wage,
+      prepEnabled: draft.prepEnabled,
       prepWage,
+      dcWage,
       payType: draft.payType,
       weeklyAllowance: draft.weeklyAllowance,
       joinDate: draft.joinDate || undefined,
@@ -131,8 +144,12 @@ export function EmployeesTab({ data, update }: Props) {
           {e.prepWage != null && e.prepWage !== e.hourlyWage && (
             <div className="sub-text">준비 {fmtWon(e.prepWage)}</div>
           )}
+          {e.dcWage != null && e.dcWage !== e.hourlyWage && (
+            <div className="sub-text">DC {fmtWon(e.dcWage)}</div>
+          )}
         </td>
         <td>{PAY_TYPE_LABELS[e.payType]}</td>
+        <td>{e.prepEnabled === false ? '없음' : '적용'}</td>
         <td>{e.weeklyAllowance ? '자동' : '없음'}</td>
         <td>{e.bank ?? ''}</td>
         <td>{e.memo ?? ''}</td>
@@ -163,13 +180,13 @@ export function EmployeesTab({ data, update }: Props) {
         <table className="list">
           <thead>
             <tr>
-              <th>이름</th><th>시급</th><th>공제 방식</th><th>주휴수당</th><th>계좌</th><th>메모</th><th></th>
+              <th>이름</th><th>시급</th><th>공제 방식</th><th>준비수당</th><th>주휴수당</th><th>계좌</th><th>메모</th><th></th>
             </tr>
           </thead>
           <tbody>
             {active.map(renderRow)}
             {archived.length > 0 && (
-              <tr className="group-row"><td colSpan={7}>보관됨 ({archived.length}명)</td></tr>
+              <tr className="group-row"><td colSpan={8}>보관됨 ({archived.length}명)</td></tr>
             )}
             {archived.map(renderRow)}
           </tbody>
@@ -206,13 +223,33 @@ export function EmployeesTab({ data, update }: Props) {
                 onChange={(e) => setDraft({ ...draft, hourlyWage: e.target.value })}
               />
             </label>
-            <label>준비시간 시급 (원)
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={draft.prepEnabled}
+                onChange={(e) => setDraft({ ...draft, prepEnabled: e.target.checked })}
+              />
+              준비시간 수당 적용 (출근한 날마다 지급)
+            </label>
+            {draft.prepEnabled && (
+              <label>준비시간 시급 (원)
+                <input
+                  type="number"
+                  min={0}
+                  step={10}
+                  value={draft.prepWage}
+                  onChange={(e) => setDraft({ ...draft, prepWage: e.target.value })}
+                  placeholder="비우면 시급과 동일"
+                />
+              </label>
+            )}
+            <label>DC 시급 (원)
               <input
                 type="number"
                 min={0}
                 step={10}
-                value={draft.prepWage}
-                onChange={(e) => setDraft({ ...draft, prepWage: e.target.value })}
+                value={draft.dcWage}
+                onChange={(e) => setDraft({ ...draft, dcWage: e.target.value })}
                 placeholder="비우면 시급과 동일"
               />
             </label>
