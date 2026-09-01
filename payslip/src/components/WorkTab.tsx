@@ -13,7 +13,7 @@ import {
   weekLabel,
 } from '../lib/date';
 import { calcEntry, parseTime, weekSummaries } from '../lib/payroll';
-import { fmtMinutes } from '../lib/format';
+import { fmtMinutes, fmtWon } from '../lib/format';
 import { newId } from '../lib/id';
 import { Modal } from './Modal';
 
@@ -30,11 +30,17 @@ interface Draft {
   dates: DateStr[];
   /** 달력에 표시 중인 달 */
   calMonth: MonthStr;
-  /** 'sessions' = 수업 횟수, 'times' = 출퇴근 시각, 'dc' = DC 업무(시간만) */
-  mode: 'sessions' | 'times' | 'dc';
+  /**
+   * 'sessions' = 수업 횟수, 'times' = 출퇴근 시각,
+   * 'dc' = DC 업무(시간만), 'custom' = 그날 급여 직접 입력
+   */
+  mode: 'sessions' | 'times' | 'dc' | 'custom';
   sessions: string;
   /** DC 업무 시간 (시간 단위, 0.5 단위 입력) */
   dcHours: string;
+  /** 직접 입력하는 그날 급여 (원) */
+  customPay: string;
+  late: boolean;
   start: string;
   end: string;
   breakMinutes: string;
@@ -91,6 +97,8 @@ export function WorkTab({ data, month, update }: Props) {
       mode: 'sessions',
       sessions: '1',
       dcHours: '1',
+      customPay: '',
+      late: false,
       start: '18:00',
       end: '22:00',
       breakMinutes: '0',
@@ -105,9 +113,11 @@ export function WorkTab({ data, month, update }: Props) {
       employeeId: e.employeeId,
       dates: [e.date],
       calMonth: monthOf(e.date),
-      mode: e.dcMinutes ? 'dc' : e.sessions ? 'sessions' : 'times',
+      mode: e.customPay != null ? 'custom' : e.dcMinutes ? 'dc' : e.sessions ? 'sessions' : 'times',
       sessions: String(e.sessions ?? 1),
       dcHours: String((e.dcMinutes ?? 60) / 60),
+      customPay: e.customPay != null ? String(e.customPay) : '',
+      late: e.late ?? false,
       start: e.start ?? '18:00',
       end: e.end ?? '22:00',
       breakMinutes: String(e.breakMinutes),
@@ -137,9 +147,11 @@ export function WorkTab({ data, month, update }: Props) {
         employeeId: draft.employeeId,
         sessions,
         dcMinutes: undefined,
+        customPay: undefined,
         start: undefined,
         end: undefined,
         breakMinutes: 0,
+        late: draft.late || undefined,
         memo: draft.memo.trim() || undefined,
       };
     } else if (draft.mode === 'dc') {
@@ -152,9 +164,28 @@ export function WorkTab({ data, month, update }: Props) {
         employeeId: draft.employeeId,
         sessions: undefined,
         dcMinutes: Math.round(hours * 60),
+        customPay: undefined,
         start: undefined,
         end: undefined,
         breakMinutes: 0,
+        late: draft.late || undefined,
+        memo: draft.memo.trim() || undefined,
+      };
+    } else if (draft.mode === 'custom') {
+      const amount = Number(draft.customPay);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        setError('그날 지급할 금액을 입력하세요.');
+        return;
+      }
+      fields = {
+        employeeId: draft.employeeId,
+        sessions: undefined,
+        dcMinutes: undefined,
+        customPay: Math.round(amount),
+        start: undefined,
+        end: undefined,
+        breakMinutes: 0,
+        late: undefined,
         memo: draft.memo.trim() || undefined,
       };
     } else {
@@ -171,9 +202,11 @@ export function WorkTab({ data, month, update }: Props) {
         employeeId: draft.employeeId,
         sessions: undefined,
         dcMinutes: undefined,
+        customPay: undefined,
         start: draft.start,
         end: draft.end,
         breakMinutes,
+        late: draft.late || undefined,
         memo: draft.memo.trim() || undefined,
       };
       if (calcEntry({ id: '', date: draft.dates[0], ...fields }).workMinutes === 0) {
@@ -272,9 +305,14 @@ export function WorkTab({ data, month, update }: Props) {
                 !e.sessions && (parseTime(e.end ?? '') ?? 0) <= (parseTime(e.start ?? '') ?? 0);
               return (
                 <tr key={e.id}>
-                  <td>{shortDate(e.date)}</td>
+                  <td>
+                    {shortDate(e.date)}
+                    {e.late && <span className="late-badge">지각</span>}
+                  </td>
                   <td>{nameOf(e.employeeId)}</td>
-                  {e.dcMinutes ? (
+                  {e.customPay != null ? (
+                    <td colSpan={3}>금액 직접 입력</td>
+                  ) : e.dcMinutes ? (
                     <td colSpan={3}>DC 업무</td>
                   ) : e.sessions ? (
                     <td colSpan={3}>수업 {e.sessions}회</td>
@@ -286,7 +324,11 @@ export function WorkTab({ data, month, update }: Props) {
                     </>
                   )}
                   <td className="num">
-                    {c.dcMinutes > 0 ? `DC ${fmtMinutes(c.dcMinutes)}` : fmtMinutes(c.workMinutes)}
+                    {c.customPay > 0
+                      ? fmtWon(c.customPay)
+                      : c.dcMinutes > 0
+                        ? `DC ${fmtMinutes(c.dcMinutes)}`
+                        : fmtMinutes(c.workMinutes)}
                   </td>
                   <td className="num">{c.nightMinutes > 0 ? fmtMinutes(c.nightMinutes) : '-'}</td>
                   <td>{e.memo ?? ''}</td>
@@ -366,9 +408,21 @@ export function WorkTab({ data, month, update }: Props) {
                 <option value="sessions">수업 횟수</option>
                 <option value="times">출퇴근 시각</option>
                 <option value="dc">DC 업무</option>
+                <option value="custom">금액 직접 입력</option>
               </select>
             </label>
-            {draft.mode === 'dc' ? (
+            {draft.mode === 'custom' ? (
+              <label>그날 급여 (원)
+                <input
+                  type="number"
+                  min={0}
+                  step={10}
+                  value={draft.customPay}
+                  onChange={(e) => setDraft({ ...draft, customPay: e.target.value })}
+                  placeholder="예: 50000"
+                />
+              </label>
+            ) : draft.mode === 'dc' ? (
               <label>DC 업무 시간 (시간)
                 <input
                   type="number"
@@ -418,6 +472,16 @@ export function WorkTab({ data, month, update }: Props) {
                 </label>
               </>
             )}
+            {draft.mode !== 'custom' && (
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={draft.late}
+                  onChange={(e) => setDraft({ ...draft, late: e.target.checked })}
+                />
+                지각 (그날 준비시간 {data.settings.latePrepDeductMinutes}분 차감)
+              </label>
+            )}
             <label>메모
               <input
                 value={draft.memo}
@@ -425,7 +489,12 @@ export function WorkTab({ data, month, update }: Props) {
               />
             </label>
           </div>
-          {draft.mode === 'dc' ? (
+          {draft.mode === 'custom' ? (
+            <p className="hint">
+              입력한 금액이 그날 급여로 그대로 지급됩니다.
+              시간 계산이 없어 준비시간·주휴·연장에는 포함되지 않습니다.
+            </p>
+          ) : draft.mode === 'dc' ? (
             <p className="hint">
               DC 업무는 입력한 시간 × 직원별 DC 시급으로 계산합니다.
               (DC 시급은 직원 탭에서 설정, 비우면 기본 시급)

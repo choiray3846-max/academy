@@ -16,6 +16,7 @@ function defaults(): PayslipData {
       minWage: 10320, // 2026년 최저시급
       minutesPerSession: 90, // 수업 1회 = 1시간 30분
       prepMinutesPerDay: 30, // 출근일당 준비시간
+      latePrepDeductMinutes: 15, // 지각 시 준비시간 차감
       rates: {
         nationalPension: 4.5,
         healthInsurance: 3.545,

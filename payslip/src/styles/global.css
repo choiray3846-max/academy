@@ -156,6 +156,14 @@ table.list tr.total-row td { font-weight: 700; background: var(--bg-2); }
 .ok-text { color: var(--ok); }
 .muted-text { color: var(--text-3); }
 .sub-text { color: var(--text-3); font-size: 12px; }
+.late-badge {
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 11px;
+}
 
 /* 추가 지급·공제 */
 .adjust-panel {

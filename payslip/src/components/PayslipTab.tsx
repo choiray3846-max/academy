@@ -176,9 +176,13 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
     });
   }
   if (slip.prepPay > 0) {
+    const lateDetail =
+      slip.prepLateDays > 0
+        ? ` − 지각 ${slip.prepLateDays}일 × ${fmtMinutes(s.latePrepDeductMinutes)}`
+        : '';
     payRows.push({
       label: '준비시간',
-      detail: `출근 ${slip.prepDays}일 × ${fmtMinutes(s.prepMinutesPerDay)} × ${fmtWon(employee.prepWage ?? wage)}`,
+      detail: `(출근 ${slip.prepDays}일 × ${fmtMinutes(s.prepMinutesPerDay)}${lateDetail}) × ${fmtWon(employee.prepWage ?? wage)}`,
       amount: slip.prepPay,
     });
   }
@@ -187,6 +191,13 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
       label: 'DC 업무',
       detail: `${fmtMinutes(slip.dcMinutes)} × ${fmtWon(employee.dcWage ?? wage)}`,
       amount: slip.dcPay,
+    });
+  }
+  if (slip.customPayTotal > 0) {
+    payRows.push({
+      label: '직접 입력 지급',
+      detail: `${slip.customPayCount}건`,
+      amount: slip.customPayTotal,
     });
   }
   for (const a of slip.extraPays) {
@@ -290,8 +301,13 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
                 !e.sessions && (parseTime(e.end ?? '') ?? 0) <= (parseTime(e.start ?? '') ?? 0);
               return (
                 <tr key={e.id}>
-                  <td>{shortDate(e.date)}</td>
-                  {e.dcMinutes ? (
+                  <td>
+                    {shortDate(e.date)}
+                    {e.late && <span className="late-badge">지각</span>}
+                  </td>
+                  {e.customPay != null ? (
+                    <td colSpan={3}>금액 직접 입력</td>
+                  ) : e.dcMinutes ? (
                     <td colSpan={3}>DC 업무</td>
                   ) : e.sessions ? (
                     <td colSpan={3}>수업 {e.sessions}회</td>
@@ -303,7 +319,11 @@ function PayslipDoc({ slip, data }: { slip: Payslip; data: PayslipData }) {
                     </>
                   )}
                   <td className="num">
-                    {c.dcMinutes > 0 ? `DC ${fmtMinutes(c.dcMinutes)}` : fmtMinutes(c.workMinutes)}
+                    {c.customPay > 0
+                      ? fmtWon(c.customPay)
+                      : c.dcMinutes > 0
+                        ? `DC ${fmtMinutes(c.dcMinutes)}`
+                        : fmtMinutes(c.workMinutes)}
                   </td>
                   <td className="num">{c.nightMinutes > 0 ? fmtMinutes(c.nightMinutes) : '-'}</td>
                 </tr>
