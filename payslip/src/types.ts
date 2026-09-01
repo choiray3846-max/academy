@@ -61,10 +61,17 @@ export interface WorkEntry {
    * 직원별 DC 시급으로 따로 계산한다. 주휴·연장에는 넣지 않는다.
    */
   dcMinutes?: number;
+  /**
+   * 그날 급여 직접 입력(원). 일반적이지 않은 경우용 —
+   * 입력한 금액만 그대로 지급하고 준비시간·주휴·연장 계산에는 넣지 않는다.
+   */
+  customPay?: number;
   start?: TimeStr;
   /** 시작보다 빠르면 다음 날 퇴근(자정 넘김)으로 본다 */
   end?: TimeStr;
   breakMinutes: number;
+  /** 지각 여부. 지각한 날은 준비시간에서 설정된 분(기본 15분)을 차감 */
+  late?: boolean;
   memo?: string;
 }
 
@@ -99,6 +106,8 @@ export interface Settings {
   minutesPerSession: number;
   /** 출근일당 준비시간(분). 근무 기록이 있는 날마다 준비시간 수당이 붙는다 */
   prepMinutesPerDay: number;
+  /** 지각한 날 준비시간에서 차감하는 분 */
+  latePrepDeductMinutes: number;
   rates: InsuranceRates;
 }
 
