@@ -192,6 +192,13 @@ export default function App() {
     });
   }
 
+  /** 주간 전체 보기에서: 좌석의 과목 변경 */
+  function setSubjectAt(d: number, b: number, g: number, seatIndex: number, subject: string | undefined) {
+    updateWeek((draft) => {
+      draft.days[d].blocks[b].groups[g].seats[seatIndex].subject = subject;
+    });
+  }
+
   /** 현재 주 판을 수정한다. 판이 없으면 빈 판에서 시작한다. */
   function updateWeek(mutator: (draft: WeekBoard) => void) {
     update((prev) => {
@@ -515,7 +522,7 @@ export default function App() {
             <span>총 배정 <b>{weekStats.totalAssignments}회</b></span>
             <span>수업(그룹) <b>{weekStats.groupCount}개</b></span>
             <span>튜터당 평균 <b>{weekStats.avg.toFixed(1)}명</b></span>
-            <span className="hint-inline">강사·학생 칸을 눌러 바로 고칠 수 있습니다. 과목·관리 담당 수정은 [하루 편집]에서.</span>
+            <span className="hint-inline">강사·학생·과목 칸을 눌러 바로 고칠 수 있습니다. 관리 담당 수정은 [하루 편집]에서.</span>
           </div>
           <WeekPrint
             week={week}
@@ -527,6 +534,7 @@ export default function App() {
             editable
             onSetTeacher={setTeacherAt}
             onSetStudent={setStudentAt}
+            onSetSubject={setSubjectAt}
           />
         </div>
       )}

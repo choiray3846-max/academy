@@ -1,5 +1,5 @@
 import type { Manager, Student, Teacher, WeekBoard } from '../types';
-import { BLOCK_NAMES, compareStudents, DAY_LABELS, SEATS_PER_GROUP } from '../types';
+import { BLOCK_NAMES, compareStudents, DAY_LABELS, SEATS_PER_GROUP, studentEnrollments } from '../types';
 import { addDays, longDayLabel } from '../lib/date';
 
 interface WeekPrintProps {
@@ -13,6 +13,7 @@ interface WeekPrintProps {
   editable?: boolean;
   onSetTeacher?: (d: number, b: number, g: number, teacherId: string | undefined) => void;
   onSetStudent?: (d: number, b: number, g: number, seatIndex: number, studentId: string | undefined) => void;
+  onSetSubject?: (d: number, b: number, g: number, seatIndex: number, subject: string | undefined) => void;
 }
 
 /**
@@ -29,6 +30,7 @@ export function WeekPrint({
   editable = false,
   onSetTeacher,
   onSetStudent,
+  onSetSubject,
 }: WeekPrintProps) {
   const studentById = new Map(students.map((s) => [s.id, s]));
   const teacherById = new Map(teachers.map((t) => [t.id, t]));
@@ -114,7 +116,37 @@ export function WeekPrint({
                             student?.name ?? ''
                           )}
                         </td>
-                        <td>{seat.studentId ? seat.subject || student?.defaultSubject || '' : ''}</td>
+                        <td>
+                          {editable && seat.studentId && student ? (
+                            (() => {
+                              const subjects = [
+                                ...new Set(
+                                  studentEnrollments(student)
+                                    .map((e) => e.subject.trim())
+                                    .filter(Boolean),
+                                ),
+                              ];
+                              const current = seat.subject?.trim() ?? '';
+                              if (current && !subjects.includes(current)) subjects.push(current);
+                              return (
+                                <select
+                                  className="wp-select"
+                                  value={current}
+                                  onChange={(e) => onSetSubject?.(d, b, g, s, e.target.value || undefined)}
+                                >
+                                  <option value=""></option>
+                                  {subjects.map((subj) => (
+                                    <option key={subj} value={subj}>{subj}</option>
+                                  ))}
+                                </select>
+                              );
+                            })()
+                          ) : seat.studentId ? (
+                            seat.subject || student?.defaultSubject || ''
+                          ) : (
+                            ''
+                          )}
+                        </td>
                         <td className="wp-grade-cell">{student?.grade ?? ''}</td>
                         <td className="wp-no-cell">{seatNo}</td>
                       </tr>
