@@ -1,0 +1,381 @@
+:root {
+  --bg: #f6f7f9;
+  --bg-2: #eef0f3;
+  --card: #ffffff;
+  --border: #dfe3e8;
+  --text: #212529;
+  --text-2: #495057;
+  --text-3: #868e96;
+  --accent: #2f6fed;
+  --accent-soft: #e8f0fe;
+  --danger: #e03131;
+  --danger-soft: #fff0f0;
+  --warn: #e8590c;
+  --warn-soft: #fff4e6;
+  --ok: #2b8a3e;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+button {
+  font: inherit;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button:hover { border-color: var(--accent); color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { opacity: 0.92; color: #fff; }
+button.danger { color: var(--danger); }
+button.danger:hover { border-color: var(--danger); background: var(--danger-soft); }
+button.danger-ghost { color: var(--text-3); }
+button.danger-ghost:hover { color: var(--danger); border-color: var(--danger); }
+button.icon {
+  border: none;
+  background: transparent;
+  padding: 2px 6px;
+  font-size: 15px;
+  color: var(--text-3);
+}
+button.icon:hover { color: var(--danger); }
+
+input, select, textarea {
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--card);
+  color: var(--text);
+  max-width: 100%;
+}
+
+input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.app { min-height: 100%; display: flex; flex-direction: column; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.topbar h1 { font-size: 17px; margin: 0; }
+.spacer { flex: 1; }
+.tabs { display: flex; gap: 6px; }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  flex-wrap: wrap;
+}
+
+.month-title { font-size: 16px; font-weight: 700; margin: 0 8px; }
+
+.chip {
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+.chip.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+.banner {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+.banner.danger { background: var(--danger-soft); color: var(--danger); }
+
+.content { flex: 1; padding: 0 16px 24px; }
+
+.tab-body { max-width: 960px; margin: 0 auto; }
+
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 10px;
+  flex-wrap: wrap;
+}
+.section-head h2 { font-size: 16px; margin: 0; }
+
+.empty { color: var(--text-3); padding: 24px 0; text-align: center; }
+
+/* 목록 테이블 */
+table.list {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+table.list th, table.list td {
+  border-bottom: 1px solid var(--border);
+  padding: 7px 10px;
+  text-align: left;
+  font-size: 13px;
+}
+table.list th { background: var(--bg-2); color: var(--text-2); font-weight: 600; }
+table.list td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.list td.actions { text-align: right; white-space: nowrap; }
+table.list td.actions button { padding: 3px 8px; font-size: 12px; margin-left: 4px; }
+table.list tr.muted-row td { color: var(--text-3); }
+table.list tr.group-row td { background: var(--bg-2); color: var(--text-3); font-size: 12px; }
+table.list tr.total-row td { font-weight: 700; background: var(--bg-2); }
+
+/* 주별 요약 카드 */
+.week-cards { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.week-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.week-card-title { font-weight: 700; }
+.ok-text { color: var(--ok); }
+.muted-text { color: var(--text-3); }
+.sub-text { color: var(--text-3); font-size: 12px; }
+.late-badge {
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 11px;
+}
+
+/* 추가 지급·공제 */
+.adjust-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+.adjust-panel input { width: 150px; }
+.chip.adj { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--border); background: var(--bg-2); }
+.chip.adj.pay { color: var(--ok); }
+.chip.adj.deduct { color: var(--danger); }
+
+/* 급여명세서 문서 */
+.payslip {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px 28px;
+  margin-bottom: 20px;
+  max-width: 760px;
+}
+.payslip-title { text-align: center; font-size: 19px; margin: 0 0 16px; letter-spacing: 2px; }
+
+.payslip table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.payslip th, .payslip td { border: 1px solid var(--border); padding: 6px 9px; }
+.payslip th { background: var(--bg-2); font-weight: 600; color: var(--text-2); text-align: left; }
+.payslip td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.payslip td.detail { color: var(--text-3); font-size: 12px; }
+
+.payslip-meta { margin-bottom: 14px; }
+.payslip-meta th { width: 90px; }
+
+.payslip-cols { display: flex; gap: 14px; align-items: flex-start; }
+.payslip-cols > table { flex: 1; }
+.payslip .total-row td { font-weight: 700; background: var(--bg-2); }
+
+.payslip-net {
+  margin: 14px 0;
+  padding: 10px 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 15px;
+  text-align: right;
+}
+.payslip-net strong { font-size: 19px; margin-left: 8px; }
+
+.work-detail { margin-top: 14px; }
+.payslip-note { color: var(--text-3); font-size: 12px; margin: 12px 0 0; }
+.payslip-warnings {
+  margin: 12px 0 0;
+  padding: 8px 12px 8px 28px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+/* 근무 추가 미니 달력 */
+.full-row { grid-column: 1 / -1; }
+.emp-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.chips-label { font-size: 13px; color: var(--text-2); margin-right: 4px; }
+
+/* 직원별 입력 줄 */
+.emp-values {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  margin-bottom: 6px;
+}
+.emp-values label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-2); }
+.emp-values label.check { flex-direction: row; align-items: center; padding-bottom: 6px; }
+.emp-values input[type='number'] { width: 110px; }
+.emp-values-name { font-weight: 700; min-width: 56px; padding-bottom: 7px; }
+.mini-cal {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg);
+}
+.mini-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.mini-cal-head button { border: none; background: transparent; padding: 2px 8px; color: var(--text-3); }
+.mini-cal-head button:hover { color: var(--accent); }
+.mini-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.mini-cal-dow {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 2px 0;
+}
+.mini-cal-dow:first-child { color: var(--danger); }
+.mini-cal-day {
+  position: relative;
+  padding: 5px 0;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--card);
+  text-align: center;
+}
+.mini-cal-day:hover { border-color: var(--accent); }
+.mini-cal-day.today { border-color: var(--border); font-weight: 700; }
+.mini-cal-day.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.mini-cal-day.has-entry::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+.mini-cal-day.selected.has-entry::after { background: #fff; }
+
+/* 폼 */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-2); }
+.form-grid label.check { flex-direction: row; align-items: center; gap: 6px; grid-column: 1 / -1; }
+label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.form-section { font-size: 14px; margin: 16px 0 4px; }
+.form-error { color: var(--danger); font-size: 13px; }
+.hint { color: var(--text-3); font-size: 12px; margin: 8px 0 0; }
+
+.backup-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+/* 모달 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+.modal {
+  background: var(--card);
+  border-radius: 10px;
+  width: 480px;
+  max-width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+.modal.wide { width: 720px; }
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-head h2 { font-size: 15px; margin: 0; }
+.modal-body { padding: 16px; overflow-y: auto; }
+.modal-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* 인쇄: 명세서만 */
+@media print {
+  body { background: #fff; }
+  .no-print { display: none !important; }
+  .content { padding: 0; }
+  .payslip {
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0 auto;
+    max-width: none;
+    break-after: page;
+  }
+  .payslip:last-child { break-after: auto; }
+  .payslip-net { border: 1px solid #333; background: #f2f2f2; }
+  .payslip th { background: #f2f2f2; }
+  .payslip .total-row td { background: #f2f2f2; }
+}
+
+@media (max-width: 640px) {
+  .payslip-cols { flex-direction: column; }
+  .form-grid { grid-template-columns: 1fr; }
+}
