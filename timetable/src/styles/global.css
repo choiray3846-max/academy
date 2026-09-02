@@ -477,3 +477,7 @@ td.dup select { border-color: var(--danger); background: var(--danger-soft); }
 .wp-t-cell .wp-select { min-width: 50px; font-weight: 700; }
 .wp-name .wp-select { min-width: 72px; text-align: left; text-align-last: left; }
 .wp-name { min-width: 80px; }
+
+/* 과목 칸: 선택 상자가 편하도록 가로 폭 확보 */
+.wp-day .wp-subj { min-width: 64px; }
+td .wp-select { min-width: 56px; }
