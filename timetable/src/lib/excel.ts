@@ -61,13 +61,29 @@ export async function exportWeekToExcel(
     const date = fromDateStr(addDays(week.weekStart, d));
     const times = d === 5 ? settings.saturdayTimes : settings.weekdayTimes;
 
-    // 1행: 날짜 제목
-    ws.mergeCells(1, base, 1, base + COLS_PER_DAY - 1);
-    const title = ws.getCell(1, base);
+    // 1행: 날짜 제목 — 교시 열은 따로 두고 T~좌석 열 위에만 병합
+    // (기존 스프레드시트와 같은 모양)
+    const corner = ws.getCell(1, base);
+    corner.value = '';
+    corner.fill = FILL_BLOCK;
+    corner.border = {
+      top: BORDER_MEDIUM,
+      left: BORDER_MEDIUM,
+      bottom: BORDER_THIN,
+      right: BORDER_THIN,
+    };
+    ws.mergeCells(1, base + 1, 1, base + COLS_PER_DAY - 1);
+    const title = ws.getCell(1, base + 1);
     title.value = `${date.getMonth() + 1}월 ${date.getDate()}일 ${DAY_LABELS[d]}요일`;
     title.font = { bold: true, size: 12 };
     title.alignment = { horizontal: 'center', vertical: 'middle' };
     title.fill = FILL_HEADER;
+    title.border = {
+      top: BORDER_MEDIUM,
+      left: BORDER_THIN,
+      bottom: BORDER_THIN,
+      right: BORDER_MEDIUM,
+    };
     ws.getRow(1).height = 22;
 
     // 2행: 열 머리
