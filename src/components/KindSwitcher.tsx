@@ -4,6 +4,7 @@ const KIND_OPTIONS: { kind: Exclude<ItemKind, 'class'>; label: string }[] = [
   { kind: 'event', label: '행사·일정' },
   { kind: 'shift', label: '근무·휴무' },
   { kind: 'consult', label: '상담 예약' },
+  { kind: 'misc', label: '기타' },
 ];
 
 interface KindSwitcherProps {

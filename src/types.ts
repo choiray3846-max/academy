@@ -18,7 +18,7 @@ export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type Role = 'owner' | 'manager' | 'teacher' | 'public';
 
 /** 달력에 올라가는 항목의 종류 */
-export type ItemKind = 'class' | 'event' | 'shift' | 'consult';
+export type ItemKind = 'class' | 'event' | 'shift' | 'consult' | 'misc';
 
 export interface Branch {
   id: ID;
@@ -152,6 +152,21 @@ export interface EventTemplate {
   endTime?: TimeStr;
 }
 
+/** 기타 항목 (행사·근무·상담이 아닌 자유 메모성 일정) */
+export interface MiscItem {
+  id: ID;
+  title: string;
+  startDate: DateStr;
+  /** 종료일(포함). 하루짜리면 startDate와 동일 */
+  endDate: DateStr;
+  allDay: boolean;
+  startTime?: TimeStr;
+  endTime?: TimeStr;
+  memo?: string;
+  /** 학부모·학생 화면에 노출할지 */
+  publicVisible?: boolean;
+}
+
 /** 앱 전역 설정 */
 export interface Settings {
   academyName: string;
@@ -176,6 +191,8 @@ export interface AcademyData {
   events: AcademyEvent[];
   /** 자주 쓰는 행사·일정 틀 */
   eventTemplates: EventTemplate[];
+  /** 행사·근무·상담 어디에도 안 들어가는 기타 항목 */
+  misc: MiscItem[];
   shifts: Shift[];
   consultations: Consultation[];
   settings: Settings;

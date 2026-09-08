@@ -5,6 +5,7 @@ import type {
   DateStr,
   EventTemplate,
   ItemKind,
+  MiscItem,
   Occurrence,
   Shift,
 } from './types';
@@ -36,6 +37,7 @@ import { DayPanel } from './components/DayPanel';
 import { EventForm } from './components/EventForm';
 import { ShiftForm } from './components/ShiftForm';
 import { ConsultForm } from './components/ConsultForm';
+import { MiscForm } from './components/MiscForm';
 import { RoleSwitcher, ROLE_LABEL } from './components/RoleSwitcher';
 import { ManageModal } from './components/ManageModal';
 
@@ -47,10 +49,14 @@ type OpenModal =
   | { type: 'manage' }
   | { type: 'event'; initial?: AcademyEvent; draft?: Partial<AcademyEvent>; convertFrom?: ConvertSource }
   | { type: 'shift'; initial?: Shift; draft?: Partial<Shift>; convertFrom?: ConvertSource }
-  | { type: 'consult'; initial?: Consultation; draft?: Partial<Consultation>; convertFrom?: ConvertSource };
+  | { type: 'consult'; initial?: Consultation; draft?: Partial<Consultation>; convertFrom?: ConvertSource }
+  | { type: 'misc'; initial?: MiscItem; draft?: Partial<MiscItem>; convertFrom?: ConvertSource };
+
+/** 항목 종류 (수업 제외) */
+type EditableKind = 'event' | 'shift' | 'consult' | 'misc';
 
 /** 종류를 바꾸는 중일 때, 저장 시 지워야 할 원래 항목 */
-type ConvertSource = { kind: 'event' | 'shift' | 'consult'; id: string };
+type ConvertSource = { kind: EditableKind; id: string };
 
 export default function App() {
   const { data, update, replaceAll, session, setSession, saveError, syncCfg, syncStatus, changeSyncConfig } =
@@ -161,6 +167,15 @@ export default function App() {
   function deleteConsult(id: string) {
     update((prev) => ({ ...prev, consultations: prev.consultations.filter((x) => x.id !== id) }));
   }
+  function saveMisc(m: MiscItem) {
+    update((prev) => {
+      const exists = prev.misc.some((x) => x.id === m.id);
+      return { ...prev, misc: exists ? prev.misc.map((x) => (x.id === m.id ? m : x)) : [...prev.misc, m] };
+    });
+  }
+  function deleteMisc(id: string) {
+    update((prev) => ({ ...prev, misc: prev.misc.filter((x) => x.id !== id) }));
+  }
 
   /** 상담 겹침 검사: 같은 지점, 같은 날, 시간대가 겹치는 '예약' 상태 상담 */
   function findConsultClash(candidate: Consultation): Consultation | null {
@@ -180,16 +195,23 @@ export default function App() {
     if (!source) return;
     if (source.kind === 'event') deleteEvent(source.id);
     else if (source.kind === 'shift') deleteShift(source.id);
-    else deleteConsult(source.id);
+    else if (source.kind === 'consult') deleteConsult(source.id);
+    else deleteMisc(source.id);
   }
 
   const teacherName = (id?: string) => data.teachers.find((t) => t.id === id)?.name;
 
   /** 행사 → 다른 종류 */
-  function convertEvent(ev: AcademyEvent, to: 'event' | 'shift' | 'consult') {
+  function convertEvent(ev: AcademyEvent, to: EditableKind) {
     const source: ConvertSource = { kind: 'event', id: ev.id };
     const memo = [ev.title, ev.memo].filter(Boolean).join(' / ');
-    if (to === 'shift') {
+    if (to === 'misc') {
+      setModal({
+        type: 'misc',
+        convertFrom: source,
+        draft: { title: ev.title, startDate: ev.startDate, endDate: ev.endDate, allDay: ev.allDay, startTime: ev.startTime, endTime: ev.endTime, memo: ev.memo, publicVisible: ev.publicVisible },
+      });
+    } else if (to === 'shift') {
       setModal({
         type: 'shift',
         convertFrom: source,
@@ -205,10 +227,16 @@ export default function App() {
   }
 
   /** 근무 → 다른 종류 */
-  function convertShift(s: Shift, to: 'event' | 'shift' | 'consult') {
+  function convertShift(s: Shift, to: EditableKind) {
     const source: ConvertSource = { kind: 'shift', id: s.id };
     const name = teacherName(s.teacherId) ?? '';
-    if (to === 'event') {
+    if (to === 'misc') {
+      setModal({
+        type: 'misc',
+        convertFrom: source,
+        draft: { title: s.memo || `${name} 근무`.trim(), startDate: s.date, endDate: s.date, allDay: !s.startTime, startTime: s.startTime, endTime: s.endTime },
+      });
+    } else if (to === 'event') {
       setModal({
         type: 'event',
         convertFrom: source,
@@ -232,11 +260,17 @@ export default function App() {
   }
 
   /** 상담 → 다른 종류 */
-  function convertConsult(k: Consultation, to: 'event' | 'shift' | 'consult') {
+  function convertConsult(k: Consultation, to: EditableKind) {
     const source: ConvertSource = { kind: 'consult', id: k.id };
     const label = `${k.studentName} 상담`;
     const memo = [label, k.parentName, k.phone, k.memo].filter(Boolean).join(' / ');
-    if (to === 'event') {
+    if (to === 'misc') {
+      setModal({
+        type: 'misc',
+        convertFrom: source,
+        draft: { title: label, startDate: k.date, endDate: k.date, allDay: false, startTime: k.startTime, endTime: k.endTime, memo: [k.parentName, k.phone, k.memo].filter(Boolean).join(' / ') || undefined },
+      });
+    } else if (to === 'event') {
       setModal({
         type: 'event',
         convertFrom: source,
@@ -247,6 +281,31 @@ export default function App() {
         type: 'shift',
         convertFrom: source,
         draft: { date: k.date, startTime: k.startTime, endTime: k.endTime, teacherId: k.counselorId, memo },
+      });
+    }
+  }
+
+  /** 기타 → 다른 종류 */
+  function convertMisc(m: MiscItem, to: EditableKind) {
+    const source: ConvertSource = { kind: 'misc', id: m.id };
+    const memo = [m.title, m.memo].filter(Boolean).join(' / ');
+    if (to === 'event') {
+      setModal({
+        type: 'event',
+        convertFrom: source,
+        draft: { title: m.title, category: 'etc', startDate: m.startDate, endDate: m.endDate, allDay: m.allDay, startTime: m.startTime, endTime: m.endTime, memo: m.memo, publicVisible: m.publicVisible },
+      });
+    } else if (to === 'shift') {
+      setModal({
+        type: 'shift',
+        convertFrom: source,
+        draft: { date: m.startDate, startTime: m.allDay ? undefined : m.startTime, endTime: m.allDay ? undefined : m.endTime, memo },
+      });
+    } else if (to === 'consult') {
+      setModal({
+        type: 'consult',
+        convertFrom: source,
+        draft: { date: m.startDate, startTime: m.startTime ?? '15:00', endTime: m.endTime, memo },
       });
     }
   }
@@ -264,6 +323,9 @@ export default function App() {
     } else if (occ.kind === 'consult') {
       const k = data.consultations.find((x) => x.id === occ.sourceId);
       if (k) setModal({ type: 'consult', initial: k });
+    } else if (occ.kind === 'misc') {
+      const m = data.misc.find((x) => x.id === occ.sourceId);
+      if (m) setModal({ type: 'misc', initial: m });
     }
   }
 
@@ -382,6 +444,7 @@ export default function App() {
           onAddEvent={() => setModal({ type: 'event' })}
           onAddShift={() => setModal({ type: 'shift' })}
           onAddConsult={() => setModal({ type: 'consult' })}
+          onAddMisc={() => setModal({ type: 'misc' })}
         />
       </div>
 
@@ -451,6 +514,20 @@ export default function App() {
             saveConsult(c);
           }}
           onDelete={deleteConsult}
+          onClose={() => setModal({ type: 'none' })}
+        />
+      )}
+      {modal.type === 'misc' && (
+        <MiscForm
+          initial={modal.initial}
+          draft={modal.draft}
+          defaultDate={selectedDate}
+          onChangeKind={modal.initial ? (to) => convertMisc(modal.initial!, to) : undefined}
+          onSave={(m) => {
+            finishConvert(modal.convertFrom);
+            saveMisc(m);
+          }}
+          onDelete={deleteMisc}
           onClose={() => setModal({ type: 'none' })}
         />
       )}

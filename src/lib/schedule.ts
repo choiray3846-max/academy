@@ -14,6 +14,7 @@ const KIND_FALLBACK_COLOR: Record<ItemKind, string> = {
   event: '#7048e8',
   shift: '#0ca678',
   consult: '#d6336c',
+  misc: '#868e96',
 };
 
 export const KIND_LABEL: Record<ItemKind, string> = {
@@ -21,6 +22,7 @@ export const KIND_LABEL: Record<ItemKind, string> = {
   event: '행사',
   shift: '근무',
   consult: '상담',
+  misc: '기타',
 };
 
 export const EVENT_CATEGORY_LABEL = {
@@ -56,8 +58,8 @@ export const CLASS_MODULE_ENABLED = false;
 
 /** 지금 달력에서 실제로 다루는 항목 종류 */
 export const ACTIVE_KINDS: ItemKind[] = CLASS_MODULE_ENABLED
-  ? ['class', 'event', 'shift', 'consult']
-  : ['event', 'shift', 'consult'];
+  ? ['class', 'event', 'shift', 'consult', 'misc']
+  : ['event', 'shift', 'consult', 'misc'];
 
 /** 달력에 무엇을 보여 줄지 정하는 필터 */
 export interface CalendarFilter {
@@ -83,10 +85,10 @@ export const DEFAULT_FILTER: CalendarFilter = {
 /** 역할별로 볼 수 있는 항목 종류 */
 export function visibleKindsForRole(role: Role): ItemKind[] {
   const byRole: Record<Role, ItemKind[]> = {
-    owner: ['class', 'event', 'shift', 'consult'],
-    manager: ['class', 'event', 'shift', 'consult'],
-    teacher: ['class', 'event', 'shift'],
-    public: ['class', 'event'],
+    owner: ['class', 'event', 'shift', 'consult', 'misc'],
+    manager: ['class', 'event', 'shift', 'consult', 'misc'],
+    teacher: ['class', 'event', 'shift', 'misc'],
+    public: ['class', 'event', 'misc'],
   };
   return byRole[role].filter((k) => ACTIVE_KINDS.includes(k));
 }
@@ -181,6 +183,37 @@ function expandEvents(data: AcademyData, from: DateStr, to: DateStr): Occurrence
         color: ev.category === 'holiday' ? '#e03131' : KIND_FALLBACK_COLOR.event,
         publicVisible: ev.publicVisible !== false,
         spanIndex: diffDays(ev.startDate, date) + 1,
+        spanTotal,
+      });
+    }
+  }
+  return out;
+}
+
+/** 기타 항목은 행사처럼 여러 날에 걸칠 수 있다. */
+function expandMisc(data: AcademyData, from: DateStr, to: DateStr): Occurrence[] {
+  const out: Occurrence[] = [];
+  for (const m of data.misc) {
+    const rangeStart = m.startDate > from ? m.startDate : from;
+    const rangeEnd = m.endDate < to ? m.endDate : to;
+    if (rangeStart > rangeEnd) continue;
+
+    const spanTotal = diffDays(m.startDate, m.endDate) + 1;
+    for (const date of eachDay(rangeStart, rangeEnd)) {
+      out.push({
+        key: `misc:${m.id}:${date}`,
+        kind: 'misc',
+        sourceId: m.id,
+        date,
+        allDay: m.allDay,
+        startTime: m.allDay ? undefined : m.startTime,
+        endTime: m.allDay ? undefined : m.endTime,
+        title: m.title,
+        subtitle: m.memo,
+        branchIds: [],
+        color: KIND_FALLBACK_COLOR.misc,
+        publicVisible: m.publicVisible !== false,
+        spanIndex: diffDays(m.startDate, date) + 1,
         spanTotal,
       });
     }
@@ -292,6 +325,7 @@ export function buildOccurrences(
   if (wanted.has('event')) all = all.concat(expandEvents(data, from, to));
   if (wanted.has('shift')) all = all.concat(expandShifts(data, from, to));
   if (wanted.has('consult')) all = all.concat(expandConsultations(data, from, to));
+  if (wanted.has('misc')) all = all.concat(expandMisc(data, from, to));
 
   // 역할에 따른 강제 범위 제한
   let branchScope = filter.branchIds;
@@ -306,7 +340,7 @@ export function buildOccurrences(
     if (session.role === 'teacher' && session.teacherId) {
       // 강사는 본인 관련 항목과 지점 행사만 본다.
       const mine = occ.teacherId === session.teacherId;
-      if (!mine && occ.kind !== 'event') return false;
+      if (!mine && occ.kind !== 'event' && occ.kind !== 'misc') return false;
     }
     if (!matchesBranch(occ, branchScope)) return false;
     if (filter.teacherId && occ.teacherId !== filter.teacherId) return false;

@@ -11,6 +11,7 @@ interface DayPanelProps {
   onAddEvent: () => void;
   onAddShift: () => void;
   onAddConsult: () => void;
+  onAddMisc: () => void;
 }
 
 /** 오른쪽에 붙는 '선택한 날짜' 상세 패널 */
@@ -22,6 +23,7 @@ export function DayPanel({
   onAddEvent,
   onAddShift,
   onAddConsult,
+  onAddMisc,
 }: DayPanelProps) {
   const holiday = holidayName(date);
   const editable = canEdit(role);
@@ -68,6 +70,7 @@ export function DayPanel({
           <button onClick={onAddEvent}>+ 행사·일정</button>
           <button onClick={onAddShift}>+ 근무·휴무</button>
           <button onClick={onAddConsult}>+ 상담 예약</button>
+          <button onClick={onAddMisc}>+ 기타</button>
         </footer>
       )}
     </aside>

@@ -15,7 +15,7 @@ interface EventFormProps {
   /** 다른 종류에서 옮겨 올 때 미리 채울 값 (새 항목 취급) */
   draft?: Partial<AcademyEvent>;
   /** 종류 바꾸기 (수정 모드에서만 표시) */
-  onChangeKind?: (kind: 'event' | 'shift' | 'consult') => void;
+  onChangeKind?: (kind: 'event' | 'shift' | 'consult' | 'misc') => void;
   onSave: (ev: AcademyEvent) => void;
   onDelete?: (id: string) => void;
   onClose: () => void;

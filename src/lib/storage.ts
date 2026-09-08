@@ -89,6 +89,7 @@ function migrate(data: Partial<AcademyData>): AcademyData {
     eventTemplates: data.eventTemplates ?? defaultEventTemplates(),
     shifts: data.shifts ?? [],
     consultations: data.consultations ?? [],
+    misc: data.misc ?? [],
     settings: { ...base.settings, ...(data.settings ?? {}) },
   };
 }

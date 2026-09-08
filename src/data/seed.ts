@@ -125,6 +125,7 @@ export function createSeedData(): AcademyData {
       },
     ],
     eventTemplates: defaultEventTemplates(),
+    misc: [],
     consultations: [
       {
         id: 'k1',
@@ -179,6 +180,7 @@ export function createEmptyData(): AcademyData {
     events: [],
     eventTemplates: defaultEventTemplates(),
     shifts: [],
+    misc: [],
     consultations: [],
   };
 }
