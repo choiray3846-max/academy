@@ -25,6 +25,7 @@ import { Modal } from './components/Modal';
 import { DayGrid } from './components/DayGrid';
 import { WeekPrint } from './components/WeekPrint';
 import { RosterModal } from './components/RosterModal';
+import { ReportModal, ReportSheet } from './components/ReportModal';
 
 type View = 'edit' | 'week';
 
@@ -37,6 +38,32 @@ export default function App() {
   });
   const [view, setView] = useState<View>('edit');
   const [rosterOpen, setRosterOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  /** 인쇄할 학생 보고서. 값이 있으면 주간 표 대신 보고서를 인쇄한다 */
+  const [printStudentId, setPrintStudentId] = useState<string | null>(null);
+
+  function printReport(studentId: string) {
+    setPrintStudentId(studentId);
+    // 보고서가 렌더링된 뒤 인쇄 대화상자를 연다. 대화상자가 닫히면(afterprint)
+    // 다시 주간 표 인쇄 모드로 복귀한다.
+    setTimeout(() => {
+      document.body.classList.add('print-report');
+      const done = () => {
+        document.body.classList.remove('print-report');
+        setPrintStudentId(null);
+        window.removeEventListener('afterprint', done);
+      };
+      window.addEventListener('afterprint', done);
+      window.print();
+    }, 80);
+  }
+
+  /** 주간 표 인쇄: 혹시 남아 있는 보고서 인쇄 모드를 끄고 인쇄한다 */
+  function printWeek() {
+    document.body.classList.remove('print-report');
+    setPrintStudentId(null);
+    window.print();
+  }
   const [fillResult, setFillResult] = useState<FillResult | null>(null);
   const [saveError, setSaveError] = useState('');
 
@@ -399,8 +426,9 @@ export default function App() {
         >
           엑셀
         </button>
+        <button onClick={() => setReportOpen(true)}>보고서</button>
         <button onClick={() => setRosterOpen(true)}>명단·설정</button>
-        <button onClick={() => window.print()}>인쇄</button>
+        <button onClick={printWeek}>인쇄</button>
       </div>
 
       {saveError && <div className="banner error">⚠ {saveError}</div>}
@@ -540,6 +568,11 @@ export default function App() {
         </div>
       )}
 
+      {/* 인쇄 전용: 학생 보고서 (보고서 인쇄를 눌렀을 때만) */}
+      {printStudentId && (
+        <ReportSheet data={data} week={week} weekStart={weekStart} studentId={printStudentId} />
+      )}
+
       {/* 인쇄 전용: 항상 주간 전체 표를 인쇄한다 */}
       <div className="print-only">
         <div className="print-header">
@@ -605,6 +638,16 @@ export default function App() {
             중요한 자리는 먼저 손으로 놓고 [자동 배치]로 나머지를 채우는 방식도 좋습니다.
           </p>
         </Modal>
+      )}
+      {reportOpen && (
+        <ReportModal
+          data={data}
+          week={week}
+          weekStart={weekStart}
+          update={update}
+          onPrint={printReport}
+          onClose={() => setReportOpen(false)}
+        />
       )}
       {rosterOpen && (
         <RosterModal

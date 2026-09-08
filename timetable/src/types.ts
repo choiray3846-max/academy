@@ -154,6 +154,41 @@ export interface Settings {
   defaultManagerId?: ID;
 }
 
+/* ------------------------------------------------------------------ */
+/* 학생 주간 보고서                                                     */
+/* ------------------------------------------------------------------ */
+
+export type AttitudeLevel = 'excellent' | 'good' | 'normal' | 'poor';
+
+export const ATTITUDE_LABEL: Record<AttitudeLevel, string> = {
+  excellent: '우수',
+  good: '양호',
+  normal: '보통',
+  poor: '미흡',
+};
+
+/** 하루치 기록 */
+export interface ReportDay {
+  /** 등원 'HH:MM' */
+  arrival?: string;
+  /** 하원 'HH:MM' */
+  departure?: string;
+  /** 취침시간 'HH:MM' */
+  bedtime?: string;
+  /** 학습실 태도 */
+  attitude?: AttitudeLevel;
+  note?: string;
+}
+
+/** 한 학생의 한 주 보고서 */
+export interface StudentReport {
+  /** 요일 번호(0=월 … 5=토) → 기록 */
+  days: Record<number, ReportDay>;
+  /** 종합 의견 (요일 기록과 별도) */
+  comment?: string;
+  updatedAt?: string;
+}
+
 export interface TimetableData {
   version: number;
   students: Student[];
@@ -162,4 +197,6 @@ export interface TimetableData {
   settings: Settings;
   /** weekStart('YYYY-MM-DD') → 그 주의 판 */
   weeks: Record<DateStr, WeekBoard>;
+  /** weekStart → (학생 id → 주간 보고서) */
+  reports: Record<DateStr, Record<ID, StudentReport>>;
 }

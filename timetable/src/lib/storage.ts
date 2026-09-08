@@ -17,6 +17,7 @@ function defaults(): TimetableData {
       defaultManagerId: undefined,
     },
     weeks: {},
+    reports: {},
   };
 }
 
@@ -75,6 +76,7 @@ function migrate(raw: Partial<TimetableData>): TimetableData {
     managers: raw.managers ?? [],
     settings: { ...base.settings, ...(raw.settings ?? {}) },
     weeks: raw.weeks ?? {},
+    reports: raw.reports ?? {},
   };
 }
 

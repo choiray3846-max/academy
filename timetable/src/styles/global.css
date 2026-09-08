@@ -481,3 +481,79 @@ td.dup select { border-color: var(--danger); background: var(--danger-soft); }
 /* 과목 칸: 선택 상자가 편하도록 가로 폭 확보 */
 .wp-day .wp-subj { min-width: 64px; }
 td .wp-select { min-width: 56px; }
+
+/* ----- 학생 주간 보고서 (입력 창) ----- */
+.report-layout { display: flex; gap: 14px; min-height: 360px; }
+.report-students {
+  width: 170px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 60vh;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding-right: 10px;
+}
+.report-student {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  background: transparent;
+}
+.report-student small { color: var(--text-3); }
+.report-student.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.report-student-mark { font-size: 11px; color: var(--accent); }
+.report-body { flex: 1; min-width: 0; }
+.report-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.report-table th, .report-table td { border-bottom: 1px solid var(--border); padding: 5px 6px; text-align: left; }
+.report-table th { font-size: 12px; color: var(--text-3); font-weight: 600; background: var(--bg-2); }
+.report-table td input, .report-table td select { width: 100%; min-width: 0; }
+.report-table td input[type="time"] { width: 96px; }
+.report-table tr.no-session td { opacity: 0.55; }
+.report-table .report-day { white-space: nowrap; font-weight: 600; }
+.report-table .report-day small { color: var(--text-3); font-weight: 400; }
+.report-table .report-blocks { white-space: nowrap; color: var(--accent); font-weight: 600; }
+
+/* ----- 학생 주간 보고서 (인쇄 양식) ----- */
+.print-report-sheet { display: none; }
+
+@media print {
+  .print-report-sheet { page: report; }
+  @page report { size: A4 portrait; margin: 14mm; }
+
+  body.print-report .print-only { display: none !important; }
+  body.print-report .print-report-sheet {
+    display: block;
+    font-size: 13px;
+    color: #111;
+  }
+  .rs-head { border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 14px; }
+  .rs-academy { font-size: 13px; color: #555; }
+  .rs-title { margin: 2px 0 6px; font-size: 22px; }
+  .rs-meta { display: flex; gap: 18px; font-size: 14px; }
+  .rs-table { width: 100%; border-collapse: collapse; }
+  .rs-table th, .rs-table td { border: 1px solid #999; padding: 7px 8px; text-align: center; }
+  .rs-table th { background: #eef1f6; font-size: 12px; }
+  .rs-table td.rs-note { text-align: left; }
+  .rs-table tr.no-session td { color: #999; }
+  .rs-comment { margin-top: 16px; border: 1px solid #999; border-radius: 4px; }
+  .rs-comment-title { background: #eef1f6; padding: 6px 10px; font-weight: 700; font-size: 13px; border-bottom: 1px solid #999; }
+  .rs-comment-body { padding: 10px; min-height: 110px; white-space: pre-wrap; line-height: 1.6; }
+  .rs-foot { margin-top: 26px; text-align: right; font-size: 13px; color: #333; }
+}
+
+/* 보고서 창은 열이 많아 더 넓게 */
+.modal:has(.report-layout) { width: min(1140px, 96vw); max-width: none; }
+.report-table th { white-space: nowrap; }
+.report-table td input[type="time"] { width: 92px; }
+.report-table td select { min-width: 72px; }
+.report-table td:last-child input { min-width: 120px; }
+
+/* 인쇄 중에는 열려 있는 창(모달)을 숨긴다 — 보고서 인쇄가 창 뒤에 깔리던 문제 */
+@media print {
+  .modal-backdrop { display: none !important; }
+}
