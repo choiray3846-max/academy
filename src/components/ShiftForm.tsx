@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { AcademyData, DateStr, Shift, ShiftType, Teacher } from '../types';
 import { Modal } from './Modal';
+import { KindSwitcher } from './KindSwitcher';
 import { SHIFT_TYPE_LABEL, leaveUsedInYear } from '../lib/schedule';
 import { newId } from '../lib/id';
 
@@ -10,24 +11,29 @@ interface ShiftFormProps {
   teachers: Teacher[];
   /** 연차 잔여 계산에 전체 근무 기록이 필요하다 */
   data: AcademyData;
+  /** 다른 종류에서 옮겨 올 때 미리 채울 값 (새 항목 취급) */
+  draft?: Partial<Shift>;
+  /** 종류 바꾸기 (수정 모드에서만 표시) */
+  onChangeKind?: (kind: 'event' | 'shift' | 'consult') => void;
   onSave: (s: Shift) => void;
   onDelete?: (id: string) => void;
   onClose: () => void;
 }
 
-export function ShiftForm({ initial, defaultDate, teachers, data, onSave, onDelete, onClose }: ShiftFormProps) {
+export function ShiftForm({ initial, draft, defaultDate, teachers, data, onChangeKind, onSave, onDelete, onClose }: ShiftFormProps) {
   const activeTeachers = teachers.filter((t) => !t.archived);
-  const [teacherId, setTeacherId] = useState(initial?.teacherId ?? activeTeachers[0]?.id ?? '');
-  const [type, setType] = useState<ShiftType>(initial?.type ?? 'work');
-  const [date, setDate] = useState(initial?.date ?? defaultDate);
-  const [hasTime, setHasTime] = useState(Boolean(initial?.startTime));
-  const [startTime, setStartTime] = useState(initial?.startTime ?? '14:00');
-  const [endTime, setEndTime] = useState(initial?.endTime ?? '22:00');
-  const [subForTeacherId, setSubForTeacherId] = useState(initial?.subForTeacherId ?? '');
+  const seed = initial ?? draft;
+  const [teacherId, setTeacherId] = useState(seed?.teacherId ?? activeTeachers[0]?.id ?? '');
+  const [type, setType] = useState<ShiftType>(seed?.type ?? 'work');
+  const [date, setDate] = useState(seed?.date ?? defaultDate);
+  const [hasTime, setHasTime] = useState(Boolean(seed?.startTime));
+  const [startTime, setStartTime] = useState(seed?.startTime ?? '14:00');
+  const [endTime, setEndTime] = useState(seed?.endTime ?? '22:00');
+  const [subForTeacherId, setSubForTeacherId] = useState(seed?.subForTeacherId ?? '');
   // 휴무일 때 연차 차감 여부·일수. 새로 만들 땐 기본으로 연차 1일 차감.
   const [useLeave, setUseLeave] = useState(initial ? Boolean(initial.leaveDays) : true);
   const [leaveDays, setLeaveDays] = useState(initial?.leaveDays ?? 1);
-  const [memo, setMemo] = useState(initial?.memo ?? '');
+  const [memo, setMemo] = useState(seed?.memo ?? '');
   const [error, setError] = useState('');
 
   const teacher = activeTeachers.find((t) => t.id === teacherId);
@@ -101,6 +107,7 @@ export function ShiftForm({ initial, defaultDate, teachers, data, onSave, onDele
       }
     >
       {error && <div className="form-error">{error}</div>}
+      {initial && onChangeKind && <KindSwitcher current="shift" onChange={onChangeKind} />}
       <div className="field-row">
         <div className="field">
           <label>직원</label>

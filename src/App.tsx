@@ -45,9 +45,12 @@ type OpenModal =
   | { type: 'none' }
   | { type: 'role' }
   | { type: 'manage' }
-  | { type: 'event'; initial?: AcademyEvent }
-  | { type: 'shift'; initial?: Shift }
-  | { type: 'consult'; initial?: Consultation };
+  | { type: 'event'; initial?: AcademyEvent; draft?: Partial<AcademyEvent>; convertFrom?: ConvertSource }
+  | { type: 'shift'; initial?: Shift; draft?: Partial<Shift>; convertFrom?: ConvertSource }
+  | { type: 'consult'; initial?: Consultation; draft?: Partial<Consultation>; convertFrom?: ConvertSource };
+
+/** 종류를 바꾸는 중일 때, 저장 시 지워야 할 원래 항목 */
+type ConvertSource = { kind: 'event' | 'shift' | 'consult'; id: string };
 
 export default function App() {
   const { data, update, replaceAll, session, setSession, saveError, syncCfg, syncStatus, changeSyncConfig } =
@@ -170,6 +173,82 @@ export default function App() {
           overlaps(k.startTime, k.endTime, candidate.startTime, candidate.endTime),
       ) ?? null
     );
+  }
+
+  /** 종류 바꾸기로 새 항목이 저장되면 원래 항목을 지운다. */
+  function finishConvert(source: ConvertSource | undefined) {
+    if (!source) return;
+    if (source.kind === 'event') deleteEvent(source.id);
+    else if (source.kind === 'shift') deleteShift(source.id);
+    else deleteConsult(source.id);
+  }
+
+  const teacherName = (id?: string) => data.teachers.find((t) => t.id === id)?.name;
+
+  /** 행사 → 다른 종류 */
+  function convertEvent(ev: AcademyEvent, to: 'event' | 'shift' | 'consult') {
+    const source: ConvertSource = { kind: 'event', id: ev.id };
+    const memo = [ev.title, ev.memo].filter(Boolean).join(' / ');
+    if (to === 'shift') {
+      setModal({
+        type: 'shift',
+        convertFrom: source,
+        draft: { date: ev.startDate, startTime: ev.allDay ? undefined : ev.startTime, endTime: ev.allDay ? undefined : ev.endTime, memo },
+      });
+    } else if (to === 'consult') {
+      setModal({
+        type: 'consult',
+        convertFrom: source,
+        draft: { date: ev.startDate, startTime: ev.startTime ?? '15:00', endTime: ev.endTime, memo },
+      });
+    }
+  }
+
+  /** 근무 → 다른 종류 */
+  function convertShift(s: Shift, to: 'event' | 'shift' | 'consult') {
+    const source: ConvertSource = { kind: 'shift', id: s.id };
+    const name = teacherName(s.teacherId) ?? '';
+    if (to === 'event') {
+      setModal({
+        type: 'event',
+        convertFrom: source,
+        draft: {
+          title: s.memo || `${name} 근무`.trim(),
+          category: 'etc',
+          startDate: s.date,
+          endDate: s.date,
+          allDay: !s.startTime,
+          startTime: s.startTime,
+          endTime: s.endTime,
+        },
+      });
+    } else if (to === 'consult') {
+      setModal({
+        type: 'consult',
+        convertFrom: source,
+        draft: { date: s.date, startTime: s.startTime ?? '15:00', endTime: s.endTime, counselorId: s.teacherId, memo: s.memo },
+      });
+    }
+  }
+
+  /** 상담 → 다른 종류 */
+  function convertConsult(k: Consultation, to: 'event' | 'shift' | 'consult') {
+    const source: ConvertSource = { kind: 'consult', id: k.id };
+    const label = `${k.studentName} 상담`;
+    const memo = [label, k.parentName, k.phone, k.memo].filter(Boolean).join(' / ');
+    if (to === 'event') {
+      setModal({
+        type: 'event',
+        convertFrom: source,
+        draft: { title: label, category: 'briefing', startDate: k.date, endDate: k.date, allDay: false, startTime: k.startTime, endTime: k.endTime, memo: k.memo },
+      });
+    } else if (to === 'shift') {
+      setModal({
+        type: 'shift',
+        convertFrom: source,
+        draft: { date: k.date, startTime: k.startTime, endTime: k.endTime, teacherId: k.counselorId, memo },
+      });
+    }
   }
 
   /** 달력의 항목을 클릭하면 해당 원본을 수정 폼으로 연다. */
@@ -329,10 +408,15 @@ export default function App() {
       {modal.type === 'event' && (
         <EventForm
           initial={modal.initial}
+          draft={modal.draft}
           defaultDate={selectedDate}
           templates={data.eventTemplates}
           onChangeTemplates={setEventTemplates}
-          onSave={saveEvent}
+          onChangeKind={modal.initial ? (to) => convertEvent(modal.initial!, to) : undefined}
+          onSave={(ev) => {
+            finishConvert(modal.convertFrom);
+            saveEvent(ev);
+          }}
           onDelete={deleteEvent}
           onClose={() => setModal({ type: 'none' })}
         />
@@ -340,10 +424,15 @@ export default function App() {
       {modal.type === 'shift' && (
         <ShiftForm
           initial={modal.initial}
+          draft={modal.draft}
           defaultDate={selectedDate}
           teachers={data.teachers}
           data={data}
-          onSave={saveShift}
+          onChangeKind={modal.initial ? (to) => convertShift(modal.initial!, to) : undefined}
+          onSave={(s) => {
+            finishConvert(modal.convertFrom);
+            saveShift(s);
+          }}
           onDelete={deleteShift}
           onClose={() => setModal({ type: 'none' })}
         />
@@ -351,11 +440,16 @@ export default function App() {
       {modal.type === 'consult' && (
         <ConsultForm
           initial={modal.initial}
+          draft={modal.draft}
           defaultDate={selectedDate}
           defaultBranchId={data.branches[0]?.id ?? 'b1'}
           teachers={data.teachers}
           findClash={findConsultClash}
-          onSave={saveConsult}
+          onChangeKind={modal.initial ? (to) => convertConsult(modal.initial!, to) : undefined}
+          onSave={(c) => {
+            finishConvert(modal.convertFrom);
+            saveConsult(c);
+          }}
           onDelete={deleteConsult}
           onClose={() => setModal({ type: 'none' })}
         />

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { AcademyEvent, DateStr, EventCategory, EventTemplate } from '../types';
 import { Modal } from './Modal';
+import { KindSwitcher } from './KindSwitcher';
 import { EVENT_CATEGORY_LABEL } from '../lib/schedule';
 import { newId } from '../lib/id';
 
@@ -11,21 +12,26 @@ interface EventFormProps {
   /** 자주 쓰는 일정 틀 */
   templates: EventTemplate[];
   onChangeTemplates: (next: EventTemplate[]) => void;
+  /** 다른 종류에서 옮겨 올 때 미리 채울 값 (새 항목 취급) */
+  draft?: Partial<AcademyEvent>;
+  /** 종류 바꾸기 (수정 모드에서만 표시) */
+  onChangeKind?: (kind: 'event' | 'shift' | 'consult') => void;
   onSave: (ev: AcademyEvent) => void;
   onDelete?: (id: string) => void;
   onClose: () => void;
 }
 
-export function EventForm({ initial, defaultDate, templates, onChangeTemplates, onSave, onDelete, onClose }: EventFormProps) {
-  const [title, setTitle] = useState(initial?.title ?? '');
-  const [category, setCategory] = useState<EventCategory>(initial?.category ?? 'etc');
-  const [startDate, setStartDate] = useState(initial?.startDate ?? defaultDate);
-  const [endDate, setEndDate] = useState(initial?.endDate ?? defaultDate);
-  const [allDay, setAllDay] = useState(initial?.allDay ?? true);
-  const [startTime, setStartTime] = useState(initial?.startTime ?? '18:00');
-  const [endTime, setEndTime] = useState(initial?.endTime ?? '20:00');
-  const [publicVisible, setPublicVisible] = useState(initial?.publicVisible !== false);
-  const [memo, setMemo] = useState(initial?.memo ?? '');
+export function EventForm({ initial, draft, defaultDate, templates, onChangeTemplates, onChangeKind, onSave, onDelete, onClose }: EventFormProps) {
+  const seed = initial ?? draft;
+  const [title, setTitle] = useState(seed?.title ?? '');
+  const [category, setCategory] = useState<EventCategory>(seed?.category ?? 'etc');
+  const [startDate, setStartDate] = useState(seed?.startDate ?? defaultDate);
+  const [endDate, setEndDate] = useState(seed?.endDate ?? seed?.startDate ?? defaultDate);
+  const [allDay, setAllDay] = useState(seed?.allDay ?? true);
+  const [startTime, setStartTime] = useState(seed?.startTime ?? '18:00');
+  const [endTime, setEndTime] = useState(seed?.endTime ?? '20:00');
+  const [publicVisible, setPublicVisible] = useState(seed?.publicVisible !== false);
+  const [memo, setMemo] = useState(seed?.memo ?? '');
   const [error, setError] = useState('');
 
   /** 자주 쓰는 일정 틀을 클릭하면 제목·분류·시간이 채워진다. 날짜는 그대로 둔다. */
@@ -112,6 +118,7 @@ export function EventForm({ initial, defaultDate, templates, onChangeTemplates, 
       }
     >
       {error && <div className="form-error">{error}</div>}
+      {initial && onChangeKind && <KindSwitcher current="event" onChange={onChangeKind} />}
       <div className="field">
         <label>자주 쓰는 일정 (누르면 아래 칸이 채워집니다)</label>
         <div className="check-row template-row">

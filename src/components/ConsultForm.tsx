@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Consultation, ConsultStatus, DateStr, Teacher } from '../types';
 import { Modal } from './Modal';
+import { KindSwitcher } from './KindSwitcher';
 import { CONSULT_STATUS_LABEL } from '../lib/schedule';
 import { minutesToTime, timeToMinutes } from '../lib/date';
 import { newId } from '../lib/id';
@@ -13,6 +14,10 @@ interface ConsultFormProps {
   teachers: Teacher[];
   /** 같은 지점·같은 시간대에 이미 잡힌 상담이 있는지 알려 주는 검사기 */
   findClash: (candidate: Consultation) => Consultation | null;
+  /** 다른 종류에서 옮겨 올 때 미리 채울 값 (새 항목 취급) */
+  draft?: Partial<Consultation>;
+  /** 종류 바꾸기 (수정 모드에서만 표시) */
+  onChangeKind?: (kind: 'event' | 'shift' | 'consult') => void;
   onSave: (c: Consultation) => void;
   onDelete?: (id: string) => void;
   onClose: () => void;
@@ -20,26 +25,29 @@ interface ConsultFormProps {
 
 export function ConsultForm({
   initial,
+  draft,
   defaultDate,
   defaultBranchId,
   teachers,
   findClash,
+  onChangeKind,
   onSave,
   onDelete,
   onClose,
 }: ConsultFormProps) {
-  const branchId = initial?.branchId ?? defaultBranchId;
-  const [date, setDate] = useState(initial?.date ?? defaultDate);
-  const [startTime, setStartTime] = useState(initial?.startTime ?? '15:00');
+  const seed = initial ?? draft;
+  const branchId = seed?.branchId ?? defaultBranchId;
+  const [date, setDate] = useState(seed?.date ?? defaultDate);
+  const [startTime, setStartTime] = useState(seed?.startTime ?? '15:00');
   const [duration, setDuration] = useState(
-    initial ? timeToMinutes(initial.endTime) - timeToMinutes(initial.startTime) : 40,
+    seed?.startTime && seed?.endTime ? timeToMinutes(seed.endTime) - timeToMinutes(seed.startTime) : 40,
   );
-  const [studentName, setStudentName] = useState(initial?.studentName ?? '');
-  const [parentName, setParentName] = useState(initial?.parentName ?? '');
-  const [phone, setPhone] = useState(initial?.phone ?? '');
-  const [counselorId, setCounselorId] = useState(initial?.counselorId ?? '');
-  const [status, setStatus] = useState<ConsultStatus>(initial?.status ?? 'booked');
-  const [memo, setMemo] = useState(initial?.memo ?? '');
+  const [studentName, setStudentName] = useState(seed?.studentName ?? '');
+  const [parentName, setParentName] = useState(seed?.parentName ?? '');
+  const [phone, setPhone] = useState(seed?.phone ?? '');
+  const [counselorId, setCounselorId] = useState(seed?.counselorId ?? '');
+  const [status, setStatus] = useState<ConsultStatus>(seed?.status ?? 'booked');
+  const [memo, setMemo] = useState(seed?.memo ?? '');
   const [error, setError] = useState('');
 
   function submit() {
@@ -95,6 +103,7 @@ export function ConsultForm({
       }
     >
       {error && <div className="form-error">{error}</div>}
+      {initial && onChangeKind && <KindSwitcher current="consult" onChange={onChangeKind} />}
       <div className="field-row">
         <div className="field">
           <label>상태</label>
