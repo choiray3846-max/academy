@@ -193,7 +193,7 @@ function expandEvents(data: AcademyData, from: DateStr, to: DateStr): Occurrence
 /** 기타 항목은 행사처럼 여러 날에 걸칠 수 있다. */
 function expandMisc(data: AcademyData, from: DateStr, to: DateStr): Occurrence[] {
   const out: Occurrence[] = [];
-  for (const m of data.misc) {
+  for (const m of data.misc ?? []) {
     const rangeStart = m.startDate > from ? m.startDate : from;
     const rangeEnd = m.endDate < to ? m.endDate : to;
     if (rangeStart > rangeEnd) continue;

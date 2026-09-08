@@ -169,12 +169,13 @@ export default function App() {
   }
   function saveMisc(m: MiscItem) {
     update((prev) => {
-      const exists = prev.misc.some((x) => x.id === m.id);
-      return { ...prev, misc: exists ? prev.misc.map((x) => (x.id === m.id ? m : x)) : [...prev.misc, m] };
+      const list = prev.misc ?? [];
+      const exists = list.some((x) => x.id === m.id);
+      return { ...prev, misc: exists ? list.map((x) => (x.id === m.id ? m : x)) : [...list, m] };
     });
   }
   function deleteMisc(id: string) {
-    update((prev) => ({ ...prev, misc: prev.misc.filter((x) => x.id !== id) }));
+    update((prev) => ({ ...prev, misc: (prev.misc ?? []).filter((x) => x.id !== id) }));
   }
 
   /** 상담 겹침 검사: 같은 지점, 같은 날, 시간대가 겹치는 '예약' 상태 상담 */
@@ -324,7 +325,7 @@ export default function App() {
       const k = data.consultations.find((x) => x.id === occ.sourceId);
       if (k) setModal({ type: 'consult', initial: k });
     } else if (occ.kind === 'misc') {
-      const m = data.misc.find((x) => x.id === occ.sourceId);
+      const m = (data.misc ?? []).find((x) => x.id === occ.sourceId);
       if (m) setModal({ type: 'misc', initial: m });
     }
   }

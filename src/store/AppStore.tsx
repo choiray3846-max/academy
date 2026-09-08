@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { AcademyData, Session } from '../types';
-import { loadData, loadSession, saveData, saveSession } from '../lib/storage';
+import { loadData, loadSession, normalizeData, saveData, saveSession } from '../lib/storage';
 import {
   fetchRemote,
   fetchRemoteStamp,
@@ -57,7 +57,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     applyingRemoteRef.current = true;
     remoteStampRef.current = stamp;
     dirtyRef.current = false;
-    setData(remoteData);
+    // 클라우드의 옛 데이터에 새 필드가 없을 수 있으므로 반드시 보정해서 적용한다.
+    setData(normalizeData(remoteData));
     setTimeout(() => {
       applyingRemoteRef.current = false;
     }, 0);

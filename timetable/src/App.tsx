@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SeatAssign, TimetableData, WeekBoard } from './types';
 import { compareStudents, DAY_LABELS, MAX_SESSIONS_PER_DAY, prefsForSubject, studentEnrollments, teacherSubjects } from './types';
 import { addDays, mondayOf, shortDate, today, weekTitle } from './lib/date';
-import { loadData, saveData } from './lib/storage';
+import { loadData, normalizeData, saveData } from './lib/storage';
 import {
   fetchRemote,
   fetchRemoteStamp,
@@ -65,7 +65,8 @@ export default function App() {
     applyingRemoteRef.current = true;
     remoteStampRef.current = stamp;
     dirtyRef.current = false;
-    setData(remoteData);
+    // 클라우드의 옛 데이터에 새 필드가 없을 수 있으므로 반드시 보정해서 적용한다.
+    setData(normalizeData(remoteData));
     // setData 반영 뒤 플래그를 풀어야 업로드 이펙트가 건너뛴다.
     setTimeout(() => {
       applyingRemoteRef.current = false;

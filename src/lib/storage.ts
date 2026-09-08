@@ -76,6 +76,14 @@ export function clearAll(): void {
 }
 
 /** 구버전 데이터에 빠진 필드를 채워 넣는다. */
+/**
+ * 어디서 온 데이터든(로컬·백업·클라우드) 현재 스키마에 맞게 빠진 필드를 채운다.
+ * 클라우드에서 내려받은 옛 데이터에 새 목록이 없어도 앱이 멈추지 않게 한다.
+ */
+export function normalizeData(data: Partial<AcademyData>): AcademyData {
+  return migrate(data);
+}
+
 function migrate(data: Partial<AcademyData>): AcademyData {
   const base = createSeedData();
   return {

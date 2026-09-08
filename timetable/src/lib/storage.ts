@@ -59,6 +59,11 @@ function migrateStudentPrefs(s: Student, teachers: Teacher[]): Student {
   };
 }
 
+/** 어디서 온 데이터든(로컬·백업·클라우드) 현재 스키마에 맞게 보정한다. */
+export function normalizeData(raw: Partial<TimetableData>): TimetableData {
+  return migrate(raw);
+}
+
 function migrate(raw: Partial<TimetableData>): TimetableData {
   const base = defaults();
   return {
