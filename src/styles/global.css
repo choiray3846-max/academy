@@ -883,7 +883,16 @@ button:focus-visible {
   .day-cell.today { background: #fff; } /* 게시용이므로 '오늘' 강조는 뺀다 */
   .day-cell[style] { outline: none !important; } /* 선택 테두리 제거 */
 
-  .pill { font-size: 10.5px; }
+  /* 인쇄에서는 시간을 항상 표시하고, 좁은 칸에서도 잘리지 않게 줄바꿈 허용
+     (화면용 max-width 규칙이 세로 용지 폭에 걸려 시간이 숨겨지던 문제 해결) */
+  .pill {
+    font-size: 10.5px;
+    white-space: normal;
+    flex-wrap: wrap;
+    text-overflow: clip;
+  }
+  .day-cell .pill .pill-time { display: inline !important; }
+  .pill .pill-title { overflow: visible; text-overflow: clip; white-space: normal; }
 
   /* 주간 뷰 인쇄 */
   .week-view { border-radius: 8px; }
