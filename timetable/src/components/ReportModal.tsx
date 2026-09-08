@@ -181,13 +181,20 @@ export function ReportSheet({ data, week, weekStart, studentId }: ReportSheetPro
   return (
     <div className="print-report-sheet">
       <div className="rs-head">
-        <div className="rs-academy">{data.settings.academyName}</div>
-        <h1 className="rs-title">주간 학습 보고서</h1>
-        <div className="rs-meta">
-          <span><b>{student.name}</b> ({student.grade})</span>
-          {subjects.length > 0 && <span>{subjects.join(' · ')}</span>}
-          <span>{weekTitle(weekStart)}</span>
+        <div className="rs-head-left">
+          <div className="rs-academy">{data.settings.academyName}</div>
+          <h1 className="rs-title">주간 학습 보고서</h1>
         </div>
+        <div className="rs-head-right">
+          <div className="rs-student">
+            {student.name} <small>{student.grade}</small>
+          </div>
+          <div className="rs-period">{weekTitle(weekStart)}</div>
+        </div>
+      </div>
+      <div className="rs-chips">
+        {subjects.map((subj) => <span key={subj} className="rs-chip">{subj}</span>)}
+        <span className="rs-chip rs-chip-muted">이번 주 수업 {blocksByDay.filter((b) => b.length > 0).length}일 · {blocksByDay.reduce((n, b) => n + b.length, 0)}회</span>
       </div>
       <table className="rs-table">
         <thead>
@@ -206,13 +213,19 @@ export function ReportSheet({ data, week, weekStart, studentId }: ReportSheetPro
             const day = report.days[d] ?? {};
             const blocks = blocksByDay[d] ?? [];
             return (
-              <tr key={d} className={blocks.length === 0 ? 'no-session' : ''}>
-                <td>{DAY_LABELS[d]} ({shortDate(addDays(weekStart, d))})</td>
-                <td>{blocks.join('·') || '-'}</td>
-                <td>{day.arrival ?? ''}</td>
-                <td>{day.departure ?? ''}</td>
-                <td>{day.bedtime ?? ''}</td>
-                <td>{day.attitude ? ATTITUDE_LABEL[day.attitude] : ''}</td>
+              <tr key={d} className={blocks.length === 0 ? 'no-session' : 'session'}>
+                <td className="rs-day">
+                  <b>{DAY_LABELS[d]}</b> <small>{shortDate(addDays(weekStart, d))}</small>
+                </td>
+                <td className="rs-blocks">
+                  {blocks.length > 0 ? blocks.map((b) => <span key={b} className="rs-block">{b}</span>) : <span className="rs-dash">-</span>}
+                </td>
+                <td className="rs-time">{day.arrival ?? ''}</td>
+                <td className="rs-time">{day.departure ?? ''}</td>
+                <td className="rs-time">{day.bedtime ?? ''}</td>
+                <td>
+                  {day.attitude ? <span className={`rs-att rs-att-${day.attitude}`}>{ATTITUDE_LABEL[day.attitude]}</span> : ''}
+                </td>
                 <td className="rs-note">{day.note ?? ''}</td>
               </tr>
             );
@@ -223,7 +236,17 @@ export function ReportSheet({ data, week, weekStart, studentId }: ReportSheetPro
         <div className="rs-comment-title">종합 의견</div>
         <div className="rs-comment-body">{report.comment || ' '}</div>
       </div>
-      <div className="rs-foot">담당 확인: ____________ &nbsp;&nbsp; 학부모 확인: ____________</div>
+      <div className="rs-legend">
+        <span className="rs-att rs-att-excellent">우수</span>
+        <span className="rs-att rs-att-good">양호</span>
+        <span className="rs-att rs-att-normal">보통</span>
+        <span className="rs-att rs-att-poor">미흡</span>
+        <span className="rs-legend-note">학습실 태도 등급</span>
+      </div>
+      <div className="rs-foot">
+        <span>담당 확인 <span className="rs-sign" /></span>
+        <span>학부모 확인 <span className="rs-sign" /></span>
+      </div>
     </div>
   );
 }
