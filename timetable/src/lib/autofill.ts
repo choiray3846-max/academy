@@ -610,9 +610,93 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
     }
   }
 
+  /**
+   * 1명·3명 → 2명·2명: 1명뿐인 수업이 남으면, 3명 수업에서 그 시간에도
+   * 올 수 있는 학생 한 명을 데려와 2명·2명으로 맞춘다.
+   * 옮기는 학생은 이번 실행에서 자동으로 놓은 좌석이어야 하고, 옮긴 뒤에도
+   * 같은 날 중복·옆 날 붙기가 생기지 않아야 한다.
+   */
+  function balanceSingles() {
+    let moved = true;
+    let guard = 0;
+    while (moved && guard++ < 100) {
+      moved = false;
+      for (let d = 0; d < DAYS_PER_WEEK && !moved; d++) {
+        if (closedDays.has(d)) continue;
+        for (let b = 0; b < BLOCKS_PER_DAY && !moved; b++) {
+          const block = draft.days[d].blocks[b];
+          for (let g = 0; g < block.groups.length && !moved; g++) {
+            const group = block.groups[g];
+            if (!group.teacherId) continue;
+            const occupied = group.seats.filter((x) => x.studentId);
+            if (occupied.length !== 1) continue;
+            const teacher = teacherById.get(group.teacherId);
+            if (!teacher) continue;
+            const freeIndex = group.seats.findIndex((x) => !x.studentId);
+            if (freeIndex < 0) continue;
+
+            // 후보: 3명 수업에 앉은, 이 시간에도 가능한 학생
+            let best: { d2: number; b2: number; g2: number; seat: number; score: number } | null = null;
+            for (let d2 = 0; d2 < DAYS_PER_WEEK; d2++) {
+              for (let b2 = 0; b2 < BLOCKS_PER_DAY; b2++) {
+                if (d2 === d && b2 === b) continue;
+                const block2 = draft.days[d2].blocks[b2];
+                for (let g2 = 0; g2 < block2.groups.length; g2++) {
+                  const grp2 = block2.groups[g2];
+                  if (!grp2.teacherId) continue;
+                  if (grp2.seats.filter((x) => x.studentId).length !== grp2.seats.length) continue; // 꽉 찬(3명) 수업만
+                  for (let si = 0; si < grp2.seats.length; si++) {
+                    const seat = grp2.seats[si];
+                    if (!seat.studentId || !placedKeys.has(`${d2}-${b2}-${g2}-${si}`)) continue;
+                    const st = studentById.get(seat.studentId);
+                    if (!st) continue;
+                    const subject = seat.subject?.trim() ?? '';
+                    if (!(st.availability ?? []).includes(slotKey(d, b))) continue;
+                    if (studentInBlock(d, b, st.id)) continue;
+                    if (!eligible(teacher, st, subject)) continue;
+                    if (!groupCompatible(group, subject)) continue;
+                    // 옮긴 뒤 같은 날 중복·옆 날 붙기 금지 (원래 자리는 빠진 것으로 계산)
+                    const otherSameDay = studentDayCount(d, st.id) - (d2 === d ? 1 : 0);
+                    if (otherSameDay > 0) continue;
+                    if (d2 !== d && studentOnAdjacentDay(d, st.id, d2)) continue;
+                    // 원래 자리에서 다른 학생과 'must' 관계 등은 eligible로 이미 확인됨
+                    const score = prefBonus(teacher, st, subject) + spreadScoreExcluding(d, st.id, d2);
+                    if (!best || score > best.score) best = { d2, b2, g2, seat: si, score };
+                  }
+                }
+              }
+            }
+            if (!best) continue;
+
+            const src = draft.days[best.d2].blocks[best.b2].groups[best.g2];
+            const moving = src.seats[best.seat];
+            group.seats[freeIndex] = { ...moving };
+            src.seats[best.seat] = {};
+            placedKeys.delete(`${best.d2}-${best.b2}-${best.g2}-${best.seat}`);
+            placedKeys.add(`${d}-${b}-${g}-${freeIndex}`);
+            moved = true;
+          }
+        }
+      }
+    }
+  }
+  /** 특정 날의 수업을 뺀 것으로 치고 계산한 퍼뜨리기 점수 */
+  function spreadScoreExcluding(d: number, studentId: string, excludeDay: number): number {
+    const days: number[] = [];
+    for (let dd = 0; dd < DAYS_PER_WEEK; dd++) {
+      if (dd === excludeDay) {
+        if (studentDayCount(dd, studentId) > 1) days.push(dd);
+      } else if (studentDayCount(dd, studentId) > 0) days.push(dd);
+    }
+    if (days.includes(d)) return 0;
+    if (days.length === 0) return 12;
+    return Math.min(3, Math.min(...days.map((dd) => Math.abs(dd - d)))) * 4;
+  }
+
   mergeSingles();
   rehomeLonelyTutors();
   mergeSingles(); // 옮긴 뒤 새로 생긴 1명 그룹을 한 번 더 합쳐 본다
+  balanceSingles(); // 그래도 남은 1명 수업은 3명 수업에서 한 명 데려와 2·2로
 
   /**
    * 튜터 재조정: 학생 배치는 그대로 두고 그룹의 담당 강사만 바꿔서
@@ -831,7 +915,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
               ? '다른 가능 시간이 모두 이미 수업이 있는 날이거나 바로 옆 날입니다'
               : joinable > 0
                 ? '옮길 수 있는 수업이 있지만 옮기면 튜터 시간이 비게 되어 그대로 뒀습니다'
-                : '다른 가능 시간에 함께 앉을 수업(맞는 과목·강사)이 없습니다';
+                : '다른 가능 시간에 함께 앉을 수업이 없고, 3명 수업에서 데려올 수 있는 학생도 없습니다';
         singles.push({ dayIndex: d, blockIndex: b, teacher, student: st, subject, reason });
       }
     }
