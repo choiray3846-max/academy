@@ -18,6 +18,7 @@ import {
   isWeekEmpty,
   shownDays,
   studentSubjectWeekCounts,
+  withWeekAvailability,
   studentWeekCounts,
   timesFor,
   weekOf,
@@ -60,6 +61,17 @@ export default function App() {
       } else {
         draft.daySettings = { ...(draft.daySettings ?? {}), [d]: next };
       }
+    });
+  }
+
+  /** 이번 주만 쓰는 가능 시간 설정. undefined면 기본값으로 되돌린다 */
+  function setWeekAvailability(personId: string, next: string[] | undefined) {
+    updateWeek((draft) => {
+      const map = { ...(draft.availability ?? {}) };
+      if (next) map[personId] = next;
+      else delete map[personId];
+      if (Object.keys(map).length === 0) delete draft.availability;
+      else draft.availability = map;
     });
   }
 
@@ -315,13 +327,14 @@ export default function App() {
       ...prev,
       weeks: {
         ...prev.weeks,
-        [weekStart]: { ...structuredClone(prevWeek), weekStart, daySettings: week.daySettings },
+        [weekStart]: { ...structuredClone(prevWeek), weekStart, daySettings: week.daySettings, availability: week.availability },
       },
     }));
   }
 
   function runAutoFill() {
-    const targets = data.students.filter(
+    const effective = withWeekAvailability(data, week); // 이번 주 가능 시간 변경 반영
+    const targets = effective.students.filter(
       (s) =>
         !s.archived &&
         studentEnrollments(s).some((e) => e.weeklyCount > 0) &&
@@ -333,7 +346,7 @@ export default function App() {
       );
       return;
     }
-    const result = autoFill(data, week);
+    const result = autoFill(effective, week);
     update((prev) => ({ ...prev, weeks: { ...prev.weeks, [weekStart]: result.week } }));
     setFillResult(result);
   }
@@ -699,6 +712,9 @@ export default function App() {
           weekStart={weekStart}
           settings={data.settings}
           onChange={setDaySetting}
+          students={data.students}
+          teachers={data.teachers}
+          onSetAvailability={setWeekAvailability}
           onClearDay={clearDay}
           onClose={() => setWeekSettingsOpen(false)}
         />

@@ -102,6 +102,7 @@ export function AvailabilityEditor({
       <p className="hint">
         토·일요일 시간대: A {saturdayTimes[0]} · B {saturdayTimes[1]} · C {saturdayTimes[2]}. 일요일은 운영 설정에서 연 주에만 배정됩니다.
         요일 글자를 누르면 그 요일 전체가 선택/해제됩니다.
+        여기는 <b>평소 기본값</b>이고, 특정 주만 다르면 시간표 화면의 [운영 설정]에서 그 주만 바꿀 수 있습니다.
       </p>
     </Modal>
   );

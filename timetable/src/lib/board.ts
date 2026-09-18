@@ -59,6 +59,22 @@ export function shownDays(week: WeekBoard): number[] {
   return Array.from({ length: DAYS_PER_WEEK }, (_, d) => d).filter((d) => d !== SUNDAY || !isDayClosed(week, d));
 }
 
+/** 이번 주에 적용되는 가능 시간: 주별 변경이 있으면 그것, 없으면 명단의 기본값 */
+export function weekAvailability(week: WeekBoard, person: { id: ID; availability?: string[] }): string[] {
+  return week.availability?.[person.id] ?? person.availability ?? [];
+}
+
+/** 이번 주 가능 시간 변경을 명단에 반영한 데이터 사본 (자동 배치 등에 사용) */
+export function withWeekAvailability(data: TimetableData, week: WeekBoard): TimetableData {
+  const ov = week.availability;
+  if (!ov || Object.keys(ov).length === 0) return data;
+  return {
+    ...data,
+    students: data.students.map((s) => (ov[s.id] ? { ...s, availability: ov[s.id] } : s)),
+    teachers: data.teachers.map((t) => (ov[t.id] ? { ...t, availability: ov[t.id] } : t)),
+  };
+}
+
 /** 저장돼 있으면 그 주 판, 없으면 빈 판 */
 export function weekOf(data: TimetableData, weekStart: string): WeekBoard {
   return data.weeks[weekStart] ?? emptyWeek(weekStart);

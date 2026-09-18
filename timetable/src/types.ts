@@ -155,6 +155,8 @@ export interface WeekBoard {
   days: DayBoard[]; // 길이 DAYS_PER_WEEK (0=월 … 6=일)
   /** 요일 번호(0=월 … 5=토) → 이 주만의 운영 설정 */
   daySettings?: Record<number, DaySetting>;
+  /** 이번 주만 다른 가능 시간 (강사·학생 id → '요일-교시' 키 목록). 없으면 명단의 기본 가능 시간 사용 */
+  availability?: Record<ID, string[]>;
 }
 
 export interface Settings {
