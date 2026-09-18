@@ -189,6 +189,36 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
     return draft.days[d].blocks.filter((blk) => blk.groups.some((g) => g.teacherId === teacherId)).length;
   }
 
+  /** 이 튜터가 그날 맡고 있는 교시 번호 목록 */
+  function teacherBlocksOn(d: number, teacherId: string): number[] {
+    return draft.days[d].blocks
+      .map((blk, b) => (blk.groups.some((g) => g.teacherId === teacherId) ? b : -1))
+      .filter((b) => b >= 0);
+  }
+  /** 교시 목록이 붙어 있는지 (A·B, B·C처럼 사이가 비지 않음) */
+  function contiguous(blocks: number[]): boolean {
+    if (blocks.length <= 1) return true;
+    const sorted = [...blocks].sort((a, c) => a - c);
+    return sorted[sorted.length - 1] - sorted[0] === sorted.length - 1;
+  }
+  /**
+   * 튜터가 그날 이 교시를 추가로 맡으면 A·C처럼 사이가 비는지.
+   * (그날 첫 수업이면 항상 false)
+   */
+  function makesGap(d: number, b: number, teacherId: string): boolean {
+    const blocks = teacherBlocksOn(d, teacherId);
+    if (blocks.length === 0) return false;
+    return !contiguous([...blocks, b]);
+  }
+  /** 튜터에게서 그날 이 교시를 빼면 남은 수업 사이가 비는지 */
+  function leavesGap(d: number, b: number, teacherId: string): boolean {
+    return !contiguous(teacherBlocksOn(d, teacherId).filter((x) => x !== b));
+  }
+  /** 튜터가 그날 이 교시를 맡으면 연속 두 타임(A·B / B·C)이 완성되는지 */
+  function completesPair(d: number, b: number, teacherId: string): boolean {
+    return teacherDayBlocks(d, teacherId) === 1 && !makesGap(d, b, teacherId);
+  }
+
   /** 이 튜터가 이번 주에 맡고 있는 총 교시 수 (고른 분배용) */
   function teacherWeekLoad(teacherId: string): number {
     let n = 0;
@@ -237,7 +267,10 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
       if (studentDayCount(d, st.id) >= MAX_SESSIONS_PER_DAY) continue; // 하루 최대 횟수 제한
 
       const block = draft.days[d].blocks[b];
-      const dayBonus = spreadScore(d, st.id) + dayBalancePenalty(d);
+      // 같은 날 두 번째 수업은 다른 날에 자리가 전혀 없을 때만 (몰아 배정 방지).
+      // 다른 어떤 점수 조합보다 크게 깎아서 사실상 마지막 수단이 되게 한다.
+      const sameDayPenalty = studentDayCount(d, st.id) > 0 ? -100 : 0;
+      const dayBonus = spreadScore(d, st.id) + dayBalancePenalty(d) + sameDayPenalty;
 
       // 1순위: 이미 열린 그룹(배치 가능한 강사)의 빈 좌석. 선호·지정 강사면 가산점.
       // 학생이 1명뿐인 그룹에는 짝짓기 가산점을 줘서 '튜터당 2명 이상'을 유도한다.
@@ -279,10 +312,13 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
           const pool = fresh.length > 0 ? fresh : all;
           pool.sort(
             (a, c) =>
+              // A·C처럼 사이가 비게 되는 튜터는 맨 뒤로
+              (makesGap(d, b, a.id) ? 1 : 0) - (makesGap(d, b, c.id) ? 1 : 0) ||
               prefBonus(c, st, subject) - prefBonus(a, st, subject) ||
               // 이번 주 배정이 없는 튜터를 최우선으로 (노는 튜터 방지)
               (teacherWeekLoad(c.id) === 0 ? 1 : 0) - (teacherWeekLoad(a.id) === 0 ? 1 : 0) ||
-              (teacherDayBlocks(d, c.id) === 1 ? 1 : 0) - (teacherDayBlocks(d, a.id) === 1 ? 1 : 0) ||
+              // 그날 이미 한 타임 하고 있고 붙는 교시면 두 타임 완성
+              (completesPair(d, b, c.id) ? 1 : 0) - (completesPair(d, b, a.id) ? 1 : 0) ||
               teacherWeekLoad(a.id) - teacherWeekLoad(c.id),
           );
           const teacher = pool[0];
@@ -292,7 +328,9 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
             // 이번 주 첫 배정이 되는 튜터(3점)가 두 타임 몰아주기(2점)보다 우선.
             // 모든 튜터가 한 번씩 배정된 뒤에는 두 타임 규칙이 작동한다.
             const secondTimeBonus =
-              teacherWeekLoad(teacher.id) === 0 ? 3 : dayBlocksNow === 1 ? 2 : 0;
+              teacherWeekLoad(teacher.id) === 0 ? 3 : completesPair(d, b, teacher.id) ? 2 : 0;
+            // 사이가 비는 배정(A·C)은 크게 감점: 다른 날·다른 튜터가 있으면 그쪽으로
+            const gapPenalty = makesGap(d, b, teacher.id) ? -8 : 0;
             // 그룹 자리: 기본은 채움 순서(10~12 → 4~6 → 1~3 → 7~9)를 따르고,
             let groupIndex =
               GROUP_FILL_ORDER.find((i) => emptyIndices.includes(i)) ?? emptyIndices[0];
@@ -307,7 +345,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
               }
             }
             const score =
-              (overCap ? 2 : 5 + secondTimeBonus) + dayBonus + prefBonus(teacher, st, subject);
+              (overCap ? 2 : 5 + secondTimeBonus) + gapPenalty + dayBonus + prefBonus(teacher, st, subject);
             if (!best || score > best.score) best = { d, b, groupIndex, newTeacherId: teacher.id, score };
           }
         }
@@ -430,7 +468,8 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
             if (d2 === d && b2 === b) continue;
             if (studentInBlock(d2, b2, st.id)) continue;
             const removedSameDay = d2 === d ? 1 : 0;
-            if (studentDayCount(d2, st.id) - removedSameDay >= MAX_SESSIONS_PER_DAY) continue;
+            // 옮긴 뒤 그날 다른 수업이 남아 있으면 몰아 배정이 되므로 제외
+            if (studentDayCount(d2, st.id) - removedSameDay > 0) continue;
             const block2 = draft.days[d2].blocks[b2];
             for (let g2 = 0; g2 < block2.groups.length; g2++) {
               const grp2 = block2.groups[g2];
@@ -445,6 +484,8 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
             }
           }
           if (!target) continue;
+          // 그룹이 닫히면서 튜터 수업 사이가 비게 되면(A·C) 옮기지 않는다
+          if (openedKeys.has(`${d}-${b}-${g}`) && leavesGap(d, b, group.teacherId)) continue;
 
           const dst = draft.days[target.d2].blocks[target.b2].groups[target.g2];
           const freeIndex = dst.seats.findIndex((x) => !x.studentId);
@@ -502,7 +543,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
               if (d2 === d && b2 === b) continue;
               if (studentInBlock(d2, b2, st.id)) continue;
               const removedSameDay = d2 === d ? 1 : 0;
-              if (studentDayCount(d2, st.id) - removedSameDay >= MAX_SESSIONS_PER_DAY) continue;
+              if (studentDayCount(d2, st.id) - removedSameDay > 0) continue; // 몰아 배정 방지
               const block2 = draft.days[d2].blocks[b2];
               const emptyIndices = block2.groups
                 .map((g2, i) => ({ g2, i }))
@@ -514,12 +555,13 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
                   t.id !== group.teacherId &&
                   teacherWeekLoad(t.id) >= 1 &&
                   teacherDayBlocks(d2, t.id) < TEACHER_SOFT_MAX_PER_DAY &&
+                  !makesGap(d2, b2, t.id) &&
                   eligible(t, st, subject) &&
                   (t.availability ?? []).includes(slotKey(d2, b2)) &&
                   !teacherBusy(d2, b2, t.id),
               );
               for (const t of candidates) {
-                const score = (teacherDayBlocks(d2, t.id) === 1 ? 10 : 0) + prefBonus(t, st, subject);
+                const score = (completesPair(d2, b2, t.id) ? 10 : 0) + prefBonus(t, st, subject);
                 if (!target || score > target.score) {
                   let gi = GROUP_FILL_ORDER.find((i) => emptyIndices.includes(i)) ?? emptyIndices[0];
                   for (const blk of draft.days[d2].blocks) {
@@ -573,6 +615,8 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
     if (!(x.availability ?? []).includes(slotKey(d, b))) return false;
     if (teacherBusy(d, b, x.id)) return false;
     if (teacherDayBlocks(d, x.id) >= TEACHER_SOFT_MAX_PER_DAY) return false;
+    if (makesGap(d, b, x.id)) return false; // 넘겨받는 쪽이 A·C가 되면 안 됨
+    if (leavesGap(d, b, group.teacherId)) return false; // 넘겨주는 쪽도 사이가 비면 안 됨
     for (const seat of group.seats) {
       if (!seat.studentId) continue;
       const st = studentById.get(seat.studentId);
@@ -640,6 +684,42 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
             changed = true;
             break outer;
           }
+        }
+      }
+      if (changed) continue;
+
+      // (3) 주간 부하 균형: 3-1처럼 2교시 이상 차이 나면 바쁜 튜터의 그룹 하나를
+      //     한가한 튜터가 넘겨받는다 (요일이 달라도 됨). 바쁜 쪽의 외콤마 그룹을
+      //     먼저 넘겨서 그쪽 하루가 깔끔해지게 하고, 받는 쪽은 두 타임이 완성되는
+      //     자리를 우선한다. 사이가 비는 배정(A·C)은 canTakeOver가 막는다.
+      const byLoad = [...activeTeachers]
+        .filter((t) => (t.availability?.length ?? 0) > 0)
+        .sort((a, c) => teacherWeekLoad(a.id) - teacherWeekLoad(c.id));
+      loadLoop: for (const x of byLoad) {
+        const xLoad = teacherWeekLoad(x.id);
+        let best: { d: number; b: number; g: number; score: number } | null = null;
+        for (let d = 0; d < DAYS_PER_WEEK; d++) {
+          for (let b = 0; b < BLOCKS_PER_DAY; b++) {
+            const block = draft.days[d].blocks[b];
+            for (let g = 0; g < block.groups.length; g++) {
+              const y = block.groups[g].teacherId;
+              if (!y || y === x.id) continue;
+              const yLoad = teacherWeekLoad(y);
+              if (yLoad < xLoad + 2) continue;
+              if (!canTakeOver(d, b, g, x)) continue;
+              const score =
+                (teacherDayBlocks(d, y) === 1 ? 10 : 0) + // 주는 쪽 외콤마 해소
+                (completesPair(d, b, x.id) ? 6 : 0) + // 받는 쪽 두 타임 완성
+                (teacherDayBlocks(d, x.id) === 0 ? 0 : 1) +
+                yLoad;
+              if (!best || score > best.score) best = { d, b, g, score };
+            }
+          }
+        }
+        if (best) {
+          draft.days[best.d].blocks[best.b].groups[best.g].teacherId = x.id;
+          changed = true;
+          break loadLoop;
         }
       }
     }
