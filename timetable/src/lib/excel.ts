@@ -2,13 +2,13 @@ import type { Settings, TimetableData, WeekBoard } from '../types';
 import {
   BLOCKS_PER_DAY,
   BLOCK_NAMES,
-  DAYS_PER_WEEK,
   DAY_LABELS,
   GROUPS_PER_BLOCK,
   SEATS_PER_GROUP,
   SEATS_PER_BLOCK,
 } from '../types';
 import { addDays, fromDateStr } from './date';
+import { isDayClosed, shownDays } from './board';
 
 /**
  * 주간 시간표를 엑셀(.xlsx)로 내보낸다.
@@ -46,22 +46,23 @@ export async function exportWeekToExcel(
   const studentById = new Map(data.students.map((s) => [s.id, s]));
   const teacherById = new Map(data.teachers.map((t) => [t.id, t]));
   const managerById = new Map(data.managers.map((m) => [m.id, m]));
+  const days = shownDays(week); // 일요일은 운영하는 주에만 포함
 
   // 열 너비
-  for (let d = 0; d < DAYS_PER_WEEK; d++) {
-    const base = d * STRIDE + 1;
+  for (let i = 0; i < days.length; i++) {
+    const base = i * STRIDE + 1;
     const widths = [8, 9, 9, 11, 8, 6, 5];
     widths.forEach((w, i) => {
       ws.getColumn(base + i).width = w;
     });
   }
 
-  for (let d = 0; d < DAYS_PER_WEEK; d++) {
-    const base = d * STRIDE + 1;
+  for (const [i, d] of days.entries()) {
+    const base = i * STRIDE + 1;
     const date = fromDateStr(addDays(week.weekStart, d));
     const ds = week.daySettings?.[d];
-    const times = ds?.times ?? (d === 5 ? settings.saturdayTimes : settings.weekdayTimes);
-    const closed = Boolean(ds?.closed);
+    const times = ds?.times ?? (d >= 5 ? settings.saturdayTimes : settings.weekdayTimes);
+    const closed = isDayClosed(week, d);
 
     // 1행: 날짜 제목 — 교시 열은 따로 두고 T~좌석 열 위에만 병합
     // (기존 스프레드시트와 같은 모양)
@@ -163,8 +164,8 @@ export async function exportWeekToExcel(
    * 요일 표의 좌우와 맨 아래는 중간 선으로 둘러서 분할이 또렷하게 보이게 한다.
    */
   const lastRow = 2 + BLOCKS_PER_DAY * SEATS_PER_BLOCK;
-  for (let d = 0; d < DAYS_PER_WEEK; d++) {
-    const base = d * STRIDE + 1;
+  for (let i = 0; i < days.length; i++) {
+    const base = i * STRIDE + 1;
     for (let row = 2; row <= lastRow; row++) {
       for (let c = 0; c < COLS_PER_DAY; c++) {
         const seatIdx = row - 3; // 0부터: 블록 내 좌석 줄 번호 계산용

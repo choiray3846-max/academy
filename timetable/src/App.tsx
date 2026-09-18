@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DaySetting, SeatAssign, TimetableData, WeekBoard } from './types';
-import { compareStudents, DAY_LABELS, MAX_SESSIONS_PER_DAY, prefsForSubject, studentEnrollments, teacherSubjects } from './types';
+import { compareStudents, DAY_LABELS, DAYS_PER_WEEK, MAX_SESSIONS_PER_DAY, prefsForSubject, SUNDAY, studentEnrollments, teacherSubjects } from './types';
 import { addDays, mondayOf, shortDate, today, weekTitle } from './lib/date';
 import { loadData, normalizeData, saveData } from './lib/storage';
 import {
@@ -16,6 +16,7 @@ import {
   findConflicts,
   isDayClosed,
   isWeekEmpty,
+  shownDays,
   studentSubjectWeekCounts,
   studentWeekCounts,
   timesFor,
@@ -49,8 +50,12 @@ export default function App() {
     updateWeek((draft) => {
       const current = draft.daySettings?.[d] ?? {};
       const next: DaySetting = { ...current, ...patch };
+      // 기본값과 같은 항목은 지운다 (월~토는 '운영', 일요일은 '휴원'이 기본)
+      if (d === SUNDAY ? next.closed !== false : !next.closed) delete next.closed;
+      if (!next.times) delete next.times;
+      if (!next.note) delete next.note;
       // 비어 있으면 항목 자체를 지워 깔끔하게 둔다
-      if (!next.closed && !next.times && !next.note) {
+      if (Object.keys(next).length === 0) {
         if (draft.daySettings) delete draft.daySettings[d];
       } else {
         draft.daySettings = { ...(draft.daySettings ?? {}), [d]: next };
@@ -404,7 +409,18 @@ export default function App() {
 
   const dayConflicts = conflicts.filter((c) => c.dayIndex === dayIndex);
   const times = timesFor(week, data.settings, dayIndex);
-  const closedDayCount = Object.values(week.daySettings ?? {}).filter((s) => s?.closed).length;
+  const closedDayCount = Array.from({ length: DAYS_PER_WEEK }, (_, d) => d).filter(
+    (d) => d !== SUNDAY && isDayClosed(week, d),
+  ).length;
+  const sundayOpen = !isDayClosed(week, SUNDAY);
+  const visibleDays = useMemo(() => shownDays(week), [week]);
+  const settingsSummary = [closedDayCount > 0 ? `휴원 ${closedDayCount}일` : '', sundayOpen ? '일요일 운영' : '']
+    .filter(Boolean)
+    .join(' · ');
+  // 일요일을 닫으면 보이지 않는 탭에 머물지 않도록 월요일로 돌아간다
+  useEffect(() => {
+    if (!visibleDays.includes(dayIndex)) setDayIndex(0);
+  }, [visibleDays, dayIndex]);
 
   /* 배정 현황: 학생×과목 단위. 이번 주에 배정됐거나 회차가 등록된 항목만 */
   const subjectCounts = useMemo(() => studentSubjectWeekCounts(week), [week]);
@@ -468,7 +484,7 @@ export default function App() {
         <button onClick={() => setWeekStart(addDays(weekStart, -7))} aria-label="지난주">◀</button>
         <button onClick={() => setWeekStart(mondayOf(today()))}>이번 주</button>
         <button onClick={() => setWeekStart(addDays(weekStart, 7))} aria-label="다음주">▶</button>
-        <div className="week-title">{weekTitle(weekStart)}</div>
+        <div className="week-title">{weekTitle(weekStart, sundayOpen ? 6 : 5)}</div>
         <div className="check-row" style={{ gap: 4 }}>
           <button className={`chip${view === 'edit' ? ' active' : ''}`} onClick={() => setView('edit')}>하루 편집</button>
           <button className={`chip${view === 'week' ? ' active' : ''}`} onClick={() => setView('week')}>주간 전체</button>
@@ -476,7 +492,7 @@ export default function App() {
         <div className="spacer" />
         <button className="primary" onClick={runAutoFill}>자동 배치</button>
         <button onClick={() => setWeekSettingsOpen(true)}>
-          운영 설정{closedDayCount > 0 ? ` (휴원 ${closedDayCount}일)` : ''}
+          운영 설정{settingsSummary ? ` (${settingsSummary})` : ''}
         </button>
         <button onClick={copyPreviousWeek}>지난주 복사</button>
         <button className="danger-ghost" onClick={clearThisWeek}>판 비우기</button>
@@ -519,7 +535,8 @@ export default function App() {
         <div className="main">
           <div className="edit-wrap">
             <div className="day-tabs">
-              {DAY_LABELS.map((label, i) => {
+              {visibleDays.map((i) => {
+                const label = DAY_LABELS[i];
                 const hasConflict = conflicts.some((c) => c.dayIndex === i);
                 const closed = isDayClosed(week, i);
                 return (
@@ -614,7 +631,7 @@ export default function App() {
       <div className="print-only">
         <div className="print-header">
           <span className="ph-academy">{data.settings.academyName}</span>
-          <span className="ph-week">{weekTitle(weekStart)} 시간표</span>
+          <span className="ph-week">{weekTitle(weekStart, sundayOpen ? 6 : 5)} 시간표</span>
         </div>
         <WeekPrint
           week={week}

@@ -41,9 +41,10 @@ export function longDayLabel(s: DateStr, dayLabel: string): string {
 }
 
 /** 주간 제목: '2026년 8월 24일 ~ 8월 29일' */
-export function weekTitle(weekStart: DateStr): string {
+/** '2026년 9월 14일 ~ 19일'. lastDay는 마지막 요일 번호(기본 5=토, 일요일 운영 주엔 6) */
+export function weekTitle(weekStart: DateStr, lastDay = 5): string {
   const a = fromDateStr(weekStart);
-  const b = fromDateStr(addDays(weekStart, 5));
+  const b = fromDateStr(addDays(weekStart, lastDay));
   const right =
     a.getMonth() === b.getMonth()
       ? `${b.getDate()}일`

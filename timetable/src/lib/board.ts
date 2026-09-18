@@ -11,6 +11,7 @@ import {
   DAYS_PER_WEEK,
   GROUPS_PER_BLOCK,
   SEATS_PER_GROUP,
+  SUNDAY,
 } from '../types';
 
 export function emptyBlock(): BlockBoard {
@@ -30,9 +31,17 @@ export function emptyWeek(weekStart: string): WeekBoard {
   return { weekStart, days: Array.from({ length: DAYS_PER_WEEK }, emptyDay) };
 }
 
-/** 요일 기본 교시 시간 (토요일은 별도) */
+/** 예전 데이터(월~토 6일)라도 7일짜리 판이 되도록 채운다 */
+export function normalizeWeek(week: WeekBoard): WeekBoard {
+  if (Array.isArray(week.days) && week.days.length >= DAYS_PER_WEEK) return week;
+  const days = [...(week.days ?? [])];
+  while (days.length < DAYS_PER_WEEK) days.push(emptyDay());
+  return { ...week, days };
+}
+
+/** 요일 기본 교시 시간 (토·일요일은 토요일 시간대) */
 export function defaultTimesFor(settings: Settings, dayIndex: number): string[] {
-  return dayIndex === 5 ? settings.saturdayTimes : settings.weekdayTimes;
+  return dayIndex >= 5 ? settings.saturdayTimes : settings.weekdayTimes;
 }
 
 /** 이 주 이 요일의 실제 교시 시간 (운영 설정이 있으면 그것을 우선) */
@@ -40,9 +49,14 @@ export function timesFor(week: WeekBoard, settings: Settings, dayIndex: number):
   return week.daySettings?.[dayIndex]?.times ?? defaultTimesFor(settings, dayIndex);
 }
 
-/** 이 주 이 요일이 휴원인지 */
+/** 이 주 이 요일이 휴원인지. 일요일은 따로 '운영'으로 열지 않으면 휴원 */
 export function isDayClosed(week: WeekBoard, dayIndex: number): boolean {
-  return Boolean(week.daySettings?.[dayIndex]?.closed);
+  return week.daySettings?.[dayIndex]?.closed ?? dayIndex === SUNDAY;
+}
+
+/** 화면·인쇄·엑셀에 보여 줄 요일들. 월~토는 항상, 일요일은 운영하는 주에만 */
+export function shownDays(week: WeekBoard): number[] {
+  return Array.from({ length: DAYS_PER_WEEK }, (_, d) => d).filter((d) => d !== SUNDAY || !isDayClosed(week, d));
 }
 
 /** 저장돼 있으면 그 주 판, 없으면 빈 판 */

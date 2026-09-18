@@ -1,5 +1,6 @@
 import type { Student, Teacher, TimetableData } from '../types';
 import { studentEnrollments, teacherSubjects } from '../types';
+import { normalizeWeek } from './board';
 
 const KEY = 'academy-timetable/data';
 export const SCHEMA_VERSION = 1;
@@ -75,7 +76,7 @@ function migrate(raw: Partial<TimetableData>): TimetableData {
     teachers: raw.teachers ?? [],
     managers: raw.managers ?? [],
     settings: { ...base.settings, ...(raw.settings ?? {}) },
-    weeks: raw.weeks ?? {},
+    weeks: Object.fromEntries(Object.entries(raw.weeks ?? {}).map(([k, w]) => [k, normalizeWeek(w)])),
     reports: raw.reports ?? {},
   };
 }

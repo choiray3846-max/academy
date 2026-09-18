@@ -10,7 +10,7 @@ import {
   studentEnrollments,
   teacherSubjects,
 } from '../types';
-import { studentSubjectWeekCounts } from './board';
+import { isDayClosed, studentSubjectWeekCounts } from './board';
 
 export interface FillResult {
   week: WeekBoard;
@@ -42,9 +42,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
   const draft = structuredClone(week);
   /** 이번 주 휴원 요일 — 자동 배치·이동·강사 교체 모두에서 제외 */
   const closedDays = new Set<number>(
-    Object.entries(draft.daySettings ?? {})
-      .filter(([, s]) => s?.closed)
-      .map(([d]) => Number(d)),
+    Array.from({ length: DAYS_PER_WEEK }, (_, d) => d).filter((d) => isDayClosed(draft, d)),
   );
   const defaultManagerId = data.settings.defaultManagerId;
 

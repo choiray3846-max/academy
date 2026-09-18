@@ -10,7 +10,8 @@ export type ID = string;
 /** 'YYYY-MM-DD' */
 export type DateStr = string;
 
-export const DAYS_PER_WEEK = 6; // 월~토
+export const DAYS_PER_WEEK = 7; // 월~일 (일요일은 기본 휴원, 운영 설정에서 열 수 있음)
+export const SUNDAY = 6;
 export const BLOCKS_PER_DAY = 3; // A, B, C
 export const SEATS_PER_BLOCK = 12;
 export const SEATS_PER_GROUP = 3;
@@ -20,7 +21,7 @@ export const BLOCK_NAMES = ['A', 'B', 'C'] as const;
 
 /** 학생 한 명이 하루에 들을 수 있는 최대 수업(교시) 수 */
 export const MAX_SESSIONS_PER_DAY = 2;
-export const DAY_LABELS = ['월', '화', '수', '목', '금', '토'] as const;
+export const DAY_LABELS = ['월', '화', '수', '목', '금', '토', '일'] as const;
 
 /** 학생의 과목별 등록 (예: 수학 주3회, 영어 주1회) */
 export interface Enrollment {
@@ -151,7 +152,7 @@ export interface DaySetting {
 
 export interface WeekBoard {
   weekStart: DateStr;
-  days: DayBoard[]; // 길이 DAYS_PER_WEEK (0=월 … 5=토)
+  days: DayBoard[]; // 길이 DAYS_PER_WEEK (0=월 … 6=일)
   /** 요일 번호(0=월 … 5=토) → 이 주만의 운영 설정 */
   daySettings?: Record<number, DaySetting>;
 }

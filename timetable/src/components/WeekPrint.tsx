@@ -1,7 +1,7 @@
 import type { Manager, Student, Teacher, WeekBoard } from '../types';
 import { BLOCK_NAMES, compareStudents, DAY_LABELS, SEATS_PER_GROUP, studentEnrollments } from '../types';
 import { addDays, longDayLabel } from '../lib/date';
-import { isDayClosed } from '../lib/board';
+import { isDayClosed, shownDays } from '../lib/board';
 
 interface WeekPrintProps {
   week: WeekBoard;
@@ -41,9 +41,10 @@ export function WeekPrint({
 
   return (
     <div className="week-print">
-      {week.days.map((day, d) => {
+      {shownDays(week).map((d) => {
+        const day = week.days[d];
         const ds = week.daySettings?.[d];
-        const times = ds?.times ?? (d === 5 ? saturdayTimes : weekdayTimes);
+        const times = ds?.times ?? (d >= 5 ? saturdayTimes : weekdayTimes);
         const closed = isDayClosed(week, d);
         const date = addDays(week.weekStart, d);
         return (

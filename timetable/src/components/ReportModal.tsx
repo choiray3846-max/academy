@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ReportDay, Student, StudentReport, TimetableData, WeekBoard } from '../types';
-import { ATTITUDE_LABEL, BLOCK_NAMES, DAYS_PER_WEEK, DAY_LABELS, compareStudents } from '../types';
+import { ATTITUDE_LABEL, BLOCK_NAMES, DAY_LABELS, compareStudents } from '../types';
+import { shownDays } from '../lib/board';
 import { addDays, shortDate, weekTitle } from '../lib/date';
 import { Modal } from './Modal';
 
@@ -62,7 +63,7 @@ export function ReportModal({ data, week, weekStart, update, onPrint, onClose }:
 
   return (
     <Modal
-      title={`학생 보고서 · ${weekTitle(weekStart)}`}
+      title={`학생 보고서 · ${weekTitle(weekStart, shownDays(week).length - 1)}`}
       onClose={onClose}
       wide
       footer={
@@ -113,7 +114,7 @@ export function ReportModal({ data, week, weekStart, update, onPrint, onClose }:
                 </tr>
               </thead>
               <tbody>
-                {Array.from({ length: DAYS_PER_WEEK }, (_, d) => {
+                {shownDays(week).map((d) => {
                   const day = report.days[d] ?? {};
                   const blocks = blocksByDay[d] ?? [];
                   return (
@@ -252,7 +253,7 @@ export function ReportSheet({ data, week, weekStart, studentId }: ReportSheetPro
         </div>
         <div className="rs-head-right">
           <div className="rs-head-label">보고 기간</div>
-          <div className="rs-head-value">{weekTitle(weekStart)}</div>
+          <div className="rs-head-value">{weekTitle(weekStart, shownDays(week).length - 1)}</div>
           <div className="rs-head-label">발행일</div>
           <div className="rs-head-value">{issuedLabel}</div>
         </div>
@@ -303,7 +304,7 @@ export function ReportSheet({ data, week, weekStart, studentId }: ReportSheetPro
             </tr>
           </thead>
           <tbody>
-            {Array.from({ length: DAYS_PER_WEEK }, (_, d) => {
+            {shownDays(week).map((d) => {
               const day = report.days[d] ?? {};
               const blocks = blocksByDay[d] ?? [];
               return (
@@ -327,7 +328,7 @@ export function ReportSheet({ data, week, weekStart, studentId }: ReportSheetPro
       <section className="rs-section">
         <h2 className="rs-h2"><span className="rs-num">2</span>학습실 태도 평가</h2>
         <div className="rs-att-grid">
-          {Array.from({ length: DAYS_PER_WEEK }, (_, d) => {
+          {shownDays(week).map((d) => {
             const day = report.days[d] ?? {};
             const has = (blocksByDay[d] ?? []).length > 0;
             return (
