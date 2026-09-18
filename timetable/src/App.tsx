@@ -697,6 +697,19 @@ export default function App() {
               </ul>
             </>
           )}
+          {fillResult.singles.length > 0 && (
+            <>
+              <h4 style={{ margin: '6px 0 0' }}>학생이 1명뿐인 수업</h4>
+              <ul className="fill-list">
+                {fillResult.singles.map(({ dayIndex: d, blockIndex: b, teacher, student, subject, reason }) => (
+                  <li key={`${d}-${b}-${student.id}`}>
+                    <b>{DAY_LABELS[d]} {['A', 'B', 'C'][b]}교시 · {teacher.name}</b> — {student.name}
+                    {subject && ` ${subject}`} · {reason}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {fillResult.skipped.length > 0 && (
             <>
               <h4 style={{ margin: '6px 0 0' }}>자동 배치에서 빠진 학생</h4>

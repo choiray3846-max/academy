@@ -22,6 +22,8 @@ export interface FillResult {
   skipped: { student: Student; reason: string }[];
   /** 이번 주에 수업이 하나도 배정되지 않은 튜터들 */
   idleTeachers: { teacher: Teacher; reason: string }[];
+  /** 학생이 1명뿐인 수업과 그렇게 남은 이유 */
+  singles: { dayIndex: number; blockIndex: number; teacher: Teacher; student: Student; subject: string; reason: string }[];
 }
 
 /**
@@ -167,6 +169,12 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
   function studentInBlock(d: number, b: number, studentId: string): boolean {
     return draft.days[d].blocks[b].groups.some((g) => g.seats.some((s) => s.studentId === studentId));
   }
+  /** 바로 앞·뒤 날에 이 학생 수업이 있는지 (같은 날은 제외) */
+  function studentOnAdjacentDay(d: number, studentId: string, ignoreDay = -1): boolean {
+    return [d - 1, d + 1].some(
+      (dd) => dd >= 0 && dd < DAYS_PER_WEEK && dd !== ignoreDay && studentDayCount(dd, studentId) > 0,
+    );
+  }
   /** 그 날 이 학생이 이미 앉아 있는 교시 수 */
   function studentDayCount(d: number, studentId: string): number {
     return draft.days[d].blocks.filter((_, b) => studentInBlock(d, b, studentId)).length;
@@ -270,7 +278,10 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
       // 같은 날 두 번째 수업은 다른 날에 자리가 전혀 없을 때만 (몰아 배정 방지).
       // 다른 어떤 점수 조합보다 크게 깎아서 사실상 마지막 수단이 되게 한다.
       const sameDayPenalty = studentDayCount(d, st.id) > 0 ? -100 : 0;
-      const dayBonus = spreadScore(d, st.id) + dayBalancePenalty(d) + sameDayPenalty;
+      // 바로 옆 날(토·일, 목·금)에 이미 수업이 있으면 크게 감점: 하루 건너뛴 날이
+      // 하나라도 가능하면 그쪽으로 가고, 없을 때만 붙은 날에 놓는다.
+      const adjacentDayPenalty = sameDayPenalty === 0 && studentOnAdjacentDay(d, st.id) ? -25 : 0;
+      const dayBonus = spreadScore(d, st.id) + dayBalancePenalty(d) + sameDayPenalty + adjacentDayPenalty;
 
       // 1순위: 이미 열린 그룹(배치 가능한 강사)의 빈 좌석. 선호·지정 강사면 가산점.
       // 학생이 1명뿐인 그룹에는 짝짓기 가산점을 줘서 '튜터당 2명 이상'을 유도한다.
@@ -470,6 +481,8 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
             const removedSameDay = d2 === d ? 1 : 0;
             // 옮긴 뒤 그날 다른 수업이 남아 있으면 몰아 배정이 되므로 제외
             if (studentDayCount(d2, st.id) - removedSameDay > 0) continue;
+            // 옆 날에 수업이 있는 날로 옮겨 붙이지도 않는다 (지금 자리는 빼고 봄)
+            if (d2 !== d && studentOnAdjacentDay(d2, st.id, d)) continue;
             const block2 = draft.days[d2].blocks[b2];
             for (let g2 = 0; g2 < block2.groups.length; g2++) {
               const grp2 = block2.groups[g2];
@@ -544,6 +557,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
               if (studentInBlock(d2, b2, st.id)) continue;
               const removedSameDay = d2 === d ? 1 : 0;
               if (studentDayCount(d2, st.id) - removedSameDay > 0) continue; // 몰아 배정 방지
+              if (d2 !== d && studentOnAdjacentDay(d2, st.id, d)) continue;
               const block2 = draft.days[d2].blocks[b2];
               const emptyIndices = block2.groups
                 .map((g2, i) => ({ g2, i }))
@@ -777,7 +791,53 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
           : '가능 시간에 맡길 학생이 없었습니다 (학생 수요·과목·시간 확인)',
     }));
 
-  return { week: draft, placed, unplaced, skipped, idleTeachers };
+  // 학생이 1명뿐인 수업: 왜 다른 수업과 합쳐지지 못했는지 진단
+  const singles: FillResult['singles'] = [];
+  for (let d = 0; d < DAYS_PER_WEEK; d++) {
+    for (let b = 0; b < BLOCKS_PER_DAY; b++) {
+      for (const group of draft.days[d].blocks[b].groups) {
+        if (!group.teacherId) continue;
+        const seats = group.seats.filter((x) => x.studentId);
+        if (seats.length !== 1) continue;
+        const teacher = teacherById.get(group.teacherId);
+        const st = studentById.get(seats[0].studentId!);
+        if (!teacher || !st) continue;
+        const subject = seats[0].subject?.trim() ?? '';
+        let alternatives = 0;
+        let sameDayOrAdjacent = 0;
+        let joinable = 0;
+        for (const key of st.availability ?? []) {
+          const [d2, b2] = key.split('-').map(Number);
+          if (!(d2 >= 0 && d2 < DAYS_PER_WEEK && b2 >= 0 && b2 < BLOCKS_PER_DAY)) continue;
+          if (closedDays.has(d2) || (d2 === d && b2 === b)) continue;
+          alternatives++;
+          const otherSameDay = studentDayCount(d2, st.id) - (d2 === d ? 1 : 0);
+          if (otherSameDay > 0 || (d2 !== d && studentOnAdjacentDay(d2, st.id, d))) {
+            sameDayOrAdjacent++;
+            continue;
+          }
+          const canJoin = draft.days[d2].blocks[b2].groups.some((g2) => {
+            if (!g2.teacherId) return false;
+            const t2 = teacherById.get(g2.teacherId);
+            const occ = g2.seats.filter((x) => x.studentId).length;
+            return t2 && occ >= 1 && occ < g2.seats.length && eligible(t2, st, subject) && groupCompatible(g2, subject);
+          });
+          if (canJoin) joinable++;
+        }
+        const reason =
+          alternatives === 0
+            ? '학생 가능 시간이 이 칸뿐입니다'
+            : sameDayOrAdjacent === alternatives
+              ? '다른 가능 시간이 모두 이미 수업이 있는 날이거나 바로 옆 날입니다'
+              : joinable > 0
+                ? '옮길 수 있는 수업이 있지만 옮기면 튜터 시간이 비게 되어 그대로 뒀습니다'
+                : '다른 가능 시간에 함께 앉을 수업(맞는 과목·강사)이 없습니다';
+        singles.push({ dayIndex: d, blockIndex: b, teacher, student: st, subject, reason });
+      }
+    }
+  }
+
+  return { week: draft, placed, unplaced, skipped, idleTeachers, singles };
 }
 
 /** 슬롯 키를 '월 B' 같은 사람이 읽는 이름으로 */
