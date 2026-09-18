@@ -2,6 +2,7 @@ import type {
   BlockBoard,
   DayBoard,
   ID,
+  Settings,
   TimetableData,
   WeekBoard,
 } from '../types';
@@ -27,6 +28,21 @@ export function emptyDay(): DayBoard {
 
 export function emptyWeek(weekStart: string): WeekBoard {
   return { weekStart, days: Array.from({ length: DAYS_PER_WEEK }, emptyDay) };
+}
+
+/** 요일 기본 교시 시간 (토요일은 별도) */
+export function defaultTimesFor(settings: Settings, dayIndex: number): string[] {
+  return dayIndex === 5 ? settings.saturdayTimes : settings.weekdayTimes;
+}
+
+/** 이 주 이 요일의 실제 교시 시간 (운영 설정이 있으면 그것을 우선) */
+export function timesFor(week: WeekBoard, settings: Settings, dayIndex: number): string[] {
+  return week.daySettings?.[dayIndex]?.times ?? defaultTimesFor(settings, dayIndex);
+}
+
+/** 이 주 이 요일이 휴원인지 */
+export function isDayClosed(week: WeekBoard, dayIndex: number): boolean {
+  return Boolean(week.daySettings?.[dayIndex]?.closed);
 }
 
 /** 저장돼 있으면 그 주 판, 없으면 빈 판 */

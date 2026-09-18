@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { SeatAssign, TimetableData, WeekBoard } from './types';
+import type { DaySetting, SeatAssign, TimetableData, WeekBoard } from './types';
 import { compareStudents, DAY_LABELS, MAX_SESSIONS_PER_DAY, prefsForSubject, studentEnrollments, teacherSubjects } from './types';
 import { addDays, mondayOf, shortDate, today, weekTitle } from './lib/date';
 import { loadData, normalizeData, saveData } from './lib/storage';
@@ -14,9 +14,11 @@ import {
 import {
   emptyWeek,
   findConflicts,
+  isDayClosed,
   isWeekEmpty,
   studentSubjectWeekCounts,
   studentWeekCounts,
+  timesFor,
   weekOf,
 } from './lib/board';
 import { autoFill, type FillResult } from './lib/autofill';
@@ -26,6 +28,7 @@ import { DayGrid } from './components/DayGrid';
 import { WeekPrint } from './components/WeekPrint';
 import { RosterModal } from './components/RosterModal';
 import { ReportModal, ReportSheet } from './components/ReportModal';
+import { WeekSettingsModal } from './components/WeekSettingsModal';
 
 type View = 'edit' | 'week';
 
@@ -39,6 +42,33 @@ export default function App() {
   const [view, setView] = useState<View>('edit');
   const [rosterOpen, setRosterOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [weekSettingsOpen, setWeekSettingsOpen] = useState(false);
+
+  /** 이번 주 요일 운영 설정 변경 (휴원·시간·메모) */
+  function setDaySetting(d: number, patch: Partial<DaySetting>) {
+    updateWeek((draft) => {
+      const current = draft.daySettings?.[d] ?? {};
+      const next: DaySetting = { ...current, ...patch };
+      // 비어 있으면 항목 자체를 지워 깔끔하게 둔다
+      if (!next.closed && !next.times && !next.note) {
+        if (draft.daySettings) delete draft.daySettings[d];
+      } else {
+        draft.daySettings = { ...(draft.daySettings ?? {}), [d]: next };
+      }
+    });
+  }
+
+  /** 특정 요일의 배정을 전부 비운다 (휴원 지정 시 사용) */
+  function clearDay(d: number) {
+    updateWeek((draft) => {
+      for (const block of draft.days[d].blocks) {
+        for (const group of block.groups) {
+          group.teacherId = undefined;
+          group.seats = group.seats.map(() => ({}));
+        }
+      }
+    });
+  }
   /** 인쇄할 학생 보고서. 값이 있으면 주간 표 대신 보고서를 인쇄한다 */
   const [printStudentId, setPrintStudentId] = useState<string | null>(null);
 
@@ -280,7 +310,7 @@ export default function App() {
       ...prev,
       weeks: {
         ...prev.weeks,
-        [weekStart]: { ...structuredClone(prevWeek), weekStart },
+        [weekStart]: { ...structuredClone(prevWeek), weekStart, daySettings: week.daySettings },
       },
     }));
   }
@@ -373,7 +403,8 @@ export default function App() {
   }, [week, data.students]);
 
   const dayConflicts = conflicts.filter((c) => c.dayIndex === dayIndex);
-  const times = dayIndex === 5 ? data.settings.saturdayTimes : data.settings.weekdayTimes;
+  const times = timesFor(week, data.settings, dayIndex);
+  const closedDayCount = Object.values(week.daySettings ?? {}).filter((s) => s?.closed).length;
 
   /* 배정 현황: 학생×과목 단위. 이번 주에 배정됐거나 회차가 등록된 항목만 */
   const subjectCounts = useMemo(() => studentSubjectWeekCounts(week), [week]);
@@ -444,6 +475,9 @@ export default function App() {
         </div>
         <div className="spacer" />
         <button className="primary" onClick={runAutoFill}>자동 배치</button>
+        <button onClick={() => setWeekSettingsOpen(true)}>
+          운영 설정{closedDayCount > 0 ? ` (휴원 ${closedDayCount}일)` : ''}
+        </button>
         <button onClick={copyPreviousWeek}>지난주 복사</button>
         <button className="danger-ghost" onClick={clearThisWeek}>판 비우기</button>
       </div>
@@ -487,13 +521,15 @@ export default function App() {
             <div className="day-tabs">
               {DAY_LABELS.map((label, i) => {
                 const hasConflict = conflicts.some((c) => c.dayIndex === i);
+                const closed = isDayClosed(week, i);
                 return (
                   <button
                     key={i}
-                    className={`day-tab${i === dayIndex ? ' active' : ''}${hasConflict ? ' has-dup' : ''}`}
+                    className={`day-tab${i === dayIndex ? ' active' : ''}${hasConflict ? ' has-dup' : ''}${closed ? ' is-closed' : ''}`}
                     onClick={() => setDayIndex(i)}
                   >
                     {label} <span className="tab-date">{shortDate(addDays(weekStart, i))}</span>
+                    {closed && <span className="tab-closed">휴원</span>}
                   </button>
                 );
               })}
@@ -501,6 +537,7 @@ export default function App() {
             <DayGrid
               day={week.days[dayIndex]}
               times={times}
+              closedNote={isDayClosed(week, dayIndex) ? (week.daySettings?.[dayIndex]?.note ?? '') : undefined}
               students={data.students}
               teachers={data.teachers}
               managers={data.managers}
@@ -638,6 +675,16 @@ export default function App() {
             중요한 자리는 먼저 손으로 놓고 [자동 배치]로 나머지를 채우는 방식도 좋습니다.
           </p>
         </Modal>
+      )}
+      {weekSettingsOpen && (
+        <WeekSettingsModal
+          week={week}
+          weekStart={weekStart}
+          settings={data.settings}
+          onChange={setDaySetting}
+          onClearDay={clearDay}
+          onClose={() => setWeekSettingsOpen(false)}
+        />
       )}
       {reportOpen && (
         <ReportModal

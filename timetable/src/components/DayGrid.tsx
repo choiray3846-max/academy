@@ -7,6 +7,8 @@ interface DayGridProps {
   day: DayBoard;
   /** 이 요일의 교시 시간 라벨 3개 */
   times: string[];
+  /** 이번 주 이 요일이 휴원이면 표시할 안내 (메모 포함) */
+  closedNote?: string;
   students: Student[];
   teachers: Teacher[];
   managers: Manager[];
@@ -20,6 +22,7 @@ interface DayGridProps {
 export function DayGrid({
   day,
   times,
+  closedNote,
   students,
   teachers,
   managers,
@@ -44,7 +47,12 @@ export function DayGrid({
   }
 
   return (
-    <div className="day-grid">
+    <div className={`day-grid${closedNote !== undefined ? ' is-closed' : ''}`}>
+      {closedNote !== undefined && (
+        <div className="closed-banner">
+          🚫 이 날은 <b>휴원</b>입니다{closedNote ? ` — ${closedNote}` : ''}. 자동 배치에서 제외되며, 필요하면 아래에서 직접 배정할 수 있습니다.
+        </div>
+      )}
       {day.blocks.map((block, b) => (
         <section key={b} className="block-card">
           <header className="block-head">

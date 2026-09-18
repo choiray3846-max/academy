@@ -139,9 +139,21 @@ export interface DayBoard {
 }
 
 /** 한 주의 판. weekStart는 그 주 월요일 날짜 */
+/** 특정 주의 요일별 운영 설정 (추석 연휴 등 평소와 다른 주에 사용) */
+export interface DaySetting {
+  /** 휴원: 자동 배치 제외, 화면·인쇄에 휴원 표시 */
+  closed?: boolean;
+  /** 이날만 쓰는 교시 시간 라벨 3개. 없으면 기본(평일/토요일) 시간 */
+  times?: string[];
+  /** 표시용 메모 (예: '추석 연휴') */
+  note?: string;
+}
+
 export interface WeekBoard {
   weekStart: DateStr;
   days: DayBoard[]; // 길이 DAYS_PER_WEEK (0=월 … 5=토)
+  /** 요일 번호(0=월 … 5=토) → 이 주만의 운영 설정 */
+  daySettings?: Record<number, DaySetting>;
 }
 
 export interface Settings {

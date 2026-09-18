@@ -654,3 +654,55 @@ td .wp-select { min-width: 56px; }
 @media print {
   .modal-backdrop { display: none !important; }
 }
+
+/* ----- 이번 주 운영 설정 (휴원·시간 변경) ----- */
+.ws-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ws-table th, .ws-table td { border-bottom: 1px solid var(--border); padding: 6px 6px; text-align: left; vertical-align: middle; }
+.ws-table th { font-size: 12px; color: var(--text-3); font-weight: 600; background: var(--bg-2); white-space: nowrap; }
+.ws-table td input { width: 100%; min-width: 0; }
+.ws-table .ws-day { white-space: nowrap; }
+.ws-table .ws-day small { color: var(--text-3); }
+.ws-table tr.closed td { background: var(--danger-soft); }
+.ws-table tr.closed td input:disabled { opacity: 0.4; }
+.ws-check { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.ws-custom { border-color: var(--accent) !important; background: var(--accent-soft); }
+.ws-actions { white-space: nowrap; }
+.ws-actions .mini { padding: 3px 8px; font-size: 11.5px; margin-right: 4px; }
+
+.day-tab.is-closed { border-style: dashed; color: var(--danger); }
+.day-tab.is-closed.active { color: #fff; border-style: solid; background: var(--danger); border-color: var(--danger); }
+.tab-closed {
+  margin-left: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.day-tab.active .tab-closed { background: rgba(255, 255, 255, 0.25); color: #fff; }
+
+.closed-banner {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.day-grid.is-closed .block-card { opacity: 0.75; }
+
+/* 주간 표: 휴원일 */
+.wp-day.wp-closed .wp-date { background: #ffe3e3; color: #c92a2a; }
+.wp-day.wp-closed tbody td { background: #fff5f5; }
+.wp-closed-tag, .wp-note-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.wp-closed-tag { background: #c92a2a; color: #fff; }
+.wp-note-tag { background: var(--accent-soft); color: var(--accent); }

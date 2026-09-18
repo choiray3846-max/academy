@@ -40,6 +40,12 @@ export interface FillResult {
  */
 export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
   const draft = structuredClone(week);
+  /** 이번 주 휴원 요일 — 자동 배치·이동·강사 교체 모두에서 제외 */
+  const closedDays = new Set<number>(
+    Object.entries(draft.daySettings ?? {})
+      .filter(([, s]) => s?.closed)
+      .map(([d]) => Number(d)),
+  );
   const defaultManagerId = data.settings.defaultManagerId;
 
   const activeTeachers = data.teachers.filter((t) => !t.archived);
@@ -228,6 +234,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
     for (const key of st.availability ?? []) {
       const [d, b] = key.split('-').map(Number);
       if (!(d >= 0 && d < DAYS_PER_WEEK && b >= 0 && b < BLOCKS_PER_DAY)) continue;
+      if (closedDays.has(d)) continue; // 휴원일
       if (studentInBlock(d, b, st.id)) continue;
       if (studentDayCount(d, st.id) >= MAX_SESSIONS_PER_DAY) continue; // 하루 최대 횟수 제한
 
@@ -319,6 +326,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
     for (const key of st.availability ?? []) {
       const [d, b] = key.split('-').map(Number);
       if (!(d >= 0 && d < DAYS_PER_WEEK && b >= 0 && b < BLOCKS_PER_DAY)) continue;
+      if (closedDays.has(d)) continue; // 휴원일
       if (studentInBlock(d, b, st.id)) continue;
       if (studentDayCount(d, st.id) < MAX_SESSIONS_PER_DAY) allCapped = false;
       const block = draft.days[d].blocks[b];
@@ -420,6 +428,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
           for (const key of st.availability ?? []) {
             const [d2, b2] = key.split('-').map(Number);
             if (!(d2 >= 0 && d2 < DAYS_PER_WEEK && b2 >= 0 && b2 < BLOCKS_PER_DAY)) continue;
+            if (closedDays.has(d2)) continue; // 휴원일
             if (d2 === d && b2 === b) continue;
             if (studentInBlock(d2, b2, st.id)) continue;
             const removedSameDay = d2 === d ? 1 : 0;
@@ -491,6 +500,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
             for (const key of st.availability ?? []) {
               const [d2, b2] = key.split('-').map(Number);
               if (!(d2 >= 0 && d2 < DAYS_PER_WEEK && b2 >= 0 && b2 < BLOCKS_PER_DAY)) continue;
+              if (closedDays.has(d2)) continue; // 휴원일
               if (d2 === d && b2 === b) continue;
               if (studentInBlock(d2, b2, st.id)) continue;
               const removedSameDay = d2 === d ? 1 : 0;
@@ -559,6 +569,7 @@ export function autoFill(data: TimetableData, week: WeekBoard): FillResult {
    */
   function canTakeOver(d: number, b: number, g: number, x: Teacher): boolean {
     if (!openedKeys.has(`${d}-${b}-${g}`)) return false;
+    if (closedDays.has(d)) return false;
     const group = draft.days[d].blocks[b].groups[g];
     if (!group.teacherId || group.teacherId === x.id) return false;
     if (!(x.availability ?? []).includes(slotKey(d, b))) return false;

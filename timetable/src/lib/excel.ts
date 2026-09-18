@@ -59,7 +59,9 @@ export async function exportWeekToExcel(
   for (let d = 0; d < DAYS_PER_WEEK; d++) {
     const base = d * STRIDE + 1;
     const date = fromDateStr(addDays(week.weekStart, d));
-    const times = d === 5 ? settings.saturdayTimes : settings.weekdayTimes;
+    const ds = week.daySettings?.[d];
+    const times = ds?.times ?? (d === 5 ? settings.saturdayTimes : settings.weekdayTimes);
+    const closed = Boolean(ds?.closed);
 
     // 1행: 날짜 제목 — 교시 열은 따로 두고 T~좌석 열 위에만 병합
     // (기존 스프레드시트와 같은 모양)
@@ -74,7 +76,10 @@ export async function exportWeekToExcel(
     };
     ws.mergeCells(1, base + 1, 1, base + COLS_PER_DAY - 1);
     const title = ws.getCell(1, base + 1);
-    title.value = `${date.getMonth() + 1}월 ${date.getDate()}일 ${DAY_LABELS[d]}요일`;
+    title.value =
+      `${date.getMonth() + 1}월 ${date.getDate()}일 ${DAY_LABELS[d]}요일` +
+      (closed ? ` (휴원${ds?.note ? ` · ${ds.note}` : ''})` : ds?.note ? ` (${ds.note})` : '');
+    if (closed) title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE3E3' } };
     title.font = { bold: true, size: 12 };
     title.alignment = { horizontal: 'center', vertical: 'middle' };
     title.fill = FILL_HEADER;
