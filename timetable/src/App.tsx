@@ -351,9 +351,16 @@ export default function App() {
     setFillResult(result);
   }
 
+  /** 좌석·강사 배정만 비운다. 운영 설정(휴원·시간·메모)과 이번 주 가능 시간은 그대로 둔다 */
   function clearThisWeek() {
-    if (window.confirm('이번 주 판을 전부 비울까요?')) {
-      update((prev) => ({ ...prev, weeks: { ...prev.weeks, [weekStart]: emptyWeek(weekStart) } }));
+    if (window.confirm('이번 주 판을 전부 비울까요?\n(운영 설정과 이번 주 가능 시간은 유지됩니다)')) {
+      update((prev) => ({
+        ...prev,
+        weeks: {
+          ...prev.weeks,
+          [weekStart]: { ...emptyWeek(weekStart), daySettings: week.daySettings, availability: week.availability },
+        },
+      }));
     }
   }
 
