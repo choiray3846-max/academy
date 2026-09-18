@@ -9,6 +9,8 @@ interface DayGridProps {
   times: string[];
   /** 이번 주 이 요일이 휴원이면 표시할 안내 (메모 포함) */
   closedNote?: string;
+  /** 검색으로 강조할 학생 */
+  highlightId?: string | null;
   students: Student[];
   teachers: Teacher[];
   managers: Manager[];
@@ -23,6 +25,7 @@ export function DayGrid({
   day,
   times,
   closedNote,
+  highlightId,
   students,
   teachers,
   managers,
@@ -79,7 +82,7 @@ export function DayGrid({
                   const dupSeat = conflictStudentSeats.has(`${b}:${seatNo}`);
                   const dupTeacher = conflictTeacherGroups.has(`${b}:${g}`);
                   return (
-                    <tr key={seatNo} className={s === 0 ? 'group-start' : ''}>
+                    <tr key={seatNo} className={`${s === 0 ? 'group-start' : ''}${highlightId && seat.studentId === highlightId ? ' hit' : ''}`}>
                       {s === 0 && (
                         <td rowSpan={SEATS_PER_GROUP} className={`cell-t${dupTeacher ? ' dup' : ''}`}>
                           <select

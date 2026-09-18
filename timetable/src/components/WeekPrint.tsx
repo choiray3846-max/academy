@@ -12,6 +12,8 @@ interface WeekPrintProps {
   managers: Manager[];
   /** true면 강사·학생 칸이 선택 상자가 되어 바로 편집할 수 있다 */
   editable?: boolean;
+  /** 검색으로 강조할 학생 */
+  highlightId?: string | null;
   onSetTeacher?: (d: number, b: number, g: number, teacherId: string | undefined) => void;
   onSetStudent?: (d: number, b: number, g: number, seatIndex: number, studentId: string | undefined) => void;
   onSetSubject?: (d: number, b: number, g: number, seatIndex: number, subject: string | undefined) => void;
@@ -29,6 +31,7 @@ export function WeekPrint({
   teachers,
   managers,
   editable = false,
+  highlightId,
   onSetTeacher,
   onSetStudent,
   onSetSubject,
@@ -76,7 +79,7 @@ export function WeekPrint({
                     const isBlockStart = g === 0 && s === 0;
                     const isGroupStart = s === 0;
                     return (
-                      <tr key={`${b}-${seatNo}`} className={isGroupStart ? 'wp-group-start' : ''}>
+                      <tr key={`${b}-${seatNo}`} className={`${isGroupStart ? 'wp-group-start' : ''}${highlightId && seat.studentId === highlightId ? ' hit' : ''}`}>
                         {isBlockStart && (
                           <td rowSpan={12} className="wp-block-cell">
                             <div className="wp-block-name">{BLOCK_NAMES[b]}</div>

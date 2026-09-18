@@ -31,6 +31,7 @@ import { WeekPrint } from './components/WeekPrint';
 import { RosterModal } from './components/RosterModal';
 import { ReportModal, ReportSheet } from './components/ReportModal';
 import { WeekSettingsModal } from './components/WeekSettingsModal';
+import { StudentSearch, studentPlacements } from './components/StudentSearch';
 
 type View = 'edit' | 'week';
 
@@ -45,6 +46,8 @@ export default function App() {
   const [rosterOpen, setRosterOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [weekSettingsOpen, setWeekSettingsOpen] = useState(false);
+  /** 학생 검색으로 강조 중인 학생 */
+  const [highlightId, setHighlightId] = useState<string | null>(null);
 
   /** 이번 주 요일 운영 설정 변경 (휴원·시간·메모) */
   function setDaySetting(d: number, patch: Partial<DaySetting>) {
@@ -434,6 +437,11 @@ export default function App() {
   ).length;
   const sundayOpen = !isDayClosed(week, SUNDAY);
   const visibleDays = useMemo(() => shownDays(week), [week]);
+  /** 검색으로 강조한 학생이 배정된 요일들 (탭 표시용) */
+  const highlightDays = useMemo(
+    () => new Set(highlightId ? studentPlacements(week, highlightId).map((p) => p.d) : []),
+    [week, highlightId],
+  );
   const settingsSummary = [closedDayCount > 0 ? `휴원 ${closedDayCount}일` : '', sundayOpen ? '일요일 운영' : '']
     .filter(Boolean)
     .join(' · ');
@@ -475,6 +483,17 @@ export default function App() {
     <div className="app">
       <div className="topbar">
         <h1>{data.settings.academyName} 시간표</h1>
+        <StudentSearch
+          students={data.students}
+          teachers={data.teachers}
+          week={week}
+          highlightId={highlightId}
+          onHighlight={setHighlightId}
+          onGoTo={(d) => {
+            setView('edit');
+            setDayIndex(d);
+          }}
+        />
         {syncStatus !== 'off' && (
           <span className={`sync-badge ${syncStatus}`} title="여러 컴퓨터 공유 상태">
             {syncStatus === 'ok' ? '공유중 ✓' : syncStatus === 'syncing' ? '저장중…' : '공유 오류'}
@@ -559,10 +578,11 @@ export default function App() {
                 const label = DAY_LABELS[i];
                 const hasConflict = conflicts.some((c) => c.dayIndex === i);
                 const closed = isDayClosed(week, i);
+                const hit = highlightDays.has(i);
                 return (
                   <button
                     key={i}
-                    className={`day-tab${i === dayIndex ? ' active' : ''}${hasConflict ? ' has-dup' : ''}${closed ? ' is-closed' : ''}`}
+                    className={`day-tab${i === dayIndex ? ' active' : ''}${hasConflict ? ' has-dup' : ''}${closed ? ' is-closed' : ''}${hit ? ' has-hit' : ''}`}
                     onClick={() => setDayIndex(i)}
                   >
                     {label} <span className="tab-date">{shortDate(addDays(weekStart, i))}</span>
@@ -575,6 +595,7 @@ export default function App() {
               day={week.days[dayIndex]}
               times={times}
               closedNote={isDayClosed(week, dayIndex) ? (week.daySettings?.[dayIndex]?.note ?? '') : undefined}
+              highlightId={highlightId}
               students={data.students}
               teachers={data.teachers}
               managers={data.managers}
@@ -631,6 +652,7 @@ export default function App() {
             week={week}
             weekdayTimes={data.settings.weekdayTimes}
             saturdayTimes={data.settings.saturdayTimes}
+            highlightId={highlightId}
             students={data.students}
             teachers={data.teachers}
             managers={data.managers}
