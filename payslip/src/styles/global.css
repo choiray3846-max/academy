@@ -104,6 +104,41 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .banner.danger { background: var(--danger-soft); color: var(--danger); }
 
+/* 공유 상태 배지 */
+.sync-badge {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.sync-badge.ok { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.sync-badge.syncing { color: var(--text-3); }
+.sync-badge.error { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+
+.sync-note.ok {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+.sync-guide {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.7;
+}
+.sync-guide pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  font-size: 11px;
+}
+
 .content { flex: 1; padding: 0 16px 24px; }
 
 .tab-body { max-width: 960px; margin: 0 auto; }

@@ -79,3 +79,8 @@ export function importFromJson(text: string): PayslipData {
   }
   return migrate(parsed);
 }
+
+/** 클라우드 등 밖에서 온 데이터를 현재 스키마로 보정한다 (빠진 설정 채움) */
+export function normalizeData(raw: Partial<PayslipData>): PayslipData {
+  return migrate(raw);
+}
