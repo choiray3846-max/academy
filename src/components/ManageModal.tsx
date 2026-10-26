@@ -4,7 +4,7 @@ import { Modal } from './Modal';
 import { newId } from '../lib/id';
 import { exportToJson, importFromJson } from '../lib/storage';
 import { fetchRemote, pushRemote, type SyncConfig } from '../lib/sync';
-import { leaveEntriesInYear, leaveUsedInYear } from '../lib/schedule';
+import { extraWorkEntriesInYear, leaveEarnedInYear, leaveEntriesInYear, leaveUsedInYear } from '../lib/schedule';
 import { createEmptyData } from '../data/seed';
 import { today } from '../lib/date';
 
@@ -212,6 +212,7 @@ export function ManageModal({
               <tr>
                 <th>직원</th>
                 <th>총 연차</th>
+                <th>추가 근무 적립</th>
                 <th>사용</th>
                 <th>잔여</th>
                 <th>사용일</th>
@@ -220,8 +221,11 @@ export function ManageModal({
             <tbody>
               {data.teachers.filter((t) => !t.archived).map((t) => {
                 const used = leaveUsedInYear(data, t.id, leaveYear);
+                const earned = leaveEarnedInYear(data, t.id, leaveYear);
                 const entries = leaveEntriesInYear(data, t.id, leaveYear);
-                const remain = t.annualLeaveTotal != null ? t.annualLeaveTotal - used : null;
+                const extras = extraWorkEntriesInYear(data, t.id, leaveYear);
+                const remain = t.annualLeaveTotal != null ? t.annualLeaveTotal + earned - used : null;
+                const fmt = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
                 return (
                   <tr key={t.id}>
                     <td>
@@ -229,6 +233,11 @@ export function ManageModal({
                       {t.name}
                     </td>
                     <td>{t.annualLeaveTotal ?? <span className="muted">미설정</span>}</td>
+                    <td
+                      title={extras.length ? extras.map((e) => `${fmt(e.date)} +${e.extraLeaveDays}`).join(', ') : undefined}
+                    >
+                      {earned > 0 ? <b className="earned">+{earned}</b> : <span className="muted">-</span>}
+                    </td>
                     <td>{used}</td>
                     <td>
                       {remain == null ? (
@@ -246,13 +255,13 @@ export function ManageModal({
                 );
               })}
               {data.teachers.filter((t) => !t.archived).length === 0 && (
-                <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-3)' }}>등록된 직원이 없습니다.</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-3)' }}>등록된 직원이 없습니다.</td></tr>
               )}
             </tbody>
           </table>
           <p style={{ margin: 0, fontSize: 12, color: 'var(--text-3)' }}>
-            달력에서 [+ 근무·휴무]로 휴무를 등록할 때 '연차에서 차감'을 켜면 여기에 자동으로 집계됩니다.
-            총 연차는 [직원] 탭에서 입력합니다.
+            달력에서 [+ 근무·휴무]로 휴무를 등록할 때 '연차에서 차감'을 켜면 사용으로, 근무를 등록할 때
+            '추가 근무'를 켜면 적립으로 집계됩니다. 잔여 = 총 연차 + 적립 − 사용. 총 연차는 [직원] 탭에서 입력합니다.
           </p>
         </>
       )}

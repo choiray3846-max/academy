@@ -121,6 +121,11 @@ export interface Shift {
    * 1 = 연차, 0.5 = 반차. 없으면 연차 차감 없는 일반 휴무.
    */
   leaveDays?: number;
+  /**
+   * 근무(type='work'/'sub')가 추가 근무일 때 연차로 적립할 일수.
+   * 1 = 하루, 0.5 = 반일. 없으면 일반 근무.
+   */
+  extraLeaveDays?: number;
   memo?: string;
 }
 

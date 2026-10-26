@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { AcademyData, DateStr, Shift, ShiftType, Teacher } from '../types';
 import { Modal } from './Modal';
 import { KindSwitcher } from './KindSwitcher';
-import { SHIFT_TYPE_LABEL, leaveUsedInYear } from '../lib/schedule';
+import { SHIFT_TYPE_LABEL, leaveEarnedInYear, leaveUsedInYear } from '../lib/schedule';
 import { newId } from '../lib/id';
 
 interface ShiftFormProps {
@@ -33,6 +33,9 @@ export function ShiftForm({ initial, draft, defaultDate, teachers, data, onChang
   // 휴무일 때 연차 차감 여부·일수. 새로 만들 땐 기본으로 연차 1일 차감.
   const [useLeave, setUseLeave] = useState(initial ? Boolean(initial.leaveDays) : true);
   const [leaveDays, setLeaveDays] = useState(initial?.leaveDays ?? 1);
+  // 근무일 때 추가 근무 여부·적립 일수. 켜면 그만큼 연차가 늘어난다.
+  const [isExtra, setIsExtra] = useState(Boolean(seed?.extraLeaveDays));
+  const [extraDays, setExtraDays] = useState(seed?.extraLeaveDays ?? 1);
   const [memo, setMemo] = useState(seed?.memo ?? '');
   const [error, setError] = useState('');
 
@@ -43,17 +46,21 @@ export function ShiftForm({ initial, draft, defaultDate, teachers, data, onChang
   const leaveInfo = useMemo(() => {
     if (!teacher) return null;
     let used = leaveUsedInYear(data, teacher.id, year);
-    if (initial && initial.teacherId === teacher.id && initial.type === 'off' && initial.leaveDays
-        && initial.date.startsWith(`${year}-`)) {
-      used -= initial.leaveDays;
+    let earned = leaveEarnedInYear(data, teacher.id, year);
+    if (initial && initial.teacherId === teacher.id && initial.date.startsWith(`${year}-`)) {
+      if (initial.type === 'off' && initial.leaveDays) used -= initial.leaveDays;
+      if (initial.type !== 'off' && initial.extraLeaveDays) earned -= initial.extraLeaveDays;
     }
     const total = teacher.annualLeaveTotal;
-    return { used, total };
+    return { used, earned, total };
   }, [teacher, data, year, initial]);
 
   const willUse = type === 'off' && useLeave ? leaveDays : 0;
+  const willEarn = type !== 'off' && isExtra ? extraDays : 0;
   const remainAfter =
-    leaveInfo && leaveInfo.total != null ? leaveInfo.total - leaveInfo.used - willUse : null;
+    leaveInfo && leaveInfo.total != null
+      ? leaveInfo.total + leaveInfo.earned + willEarn - leaveInfo.used - willUse
+      : null;
 
   function submit() {
     if (!teacherId) return setError('직원을 선택해 주세요.');
@@ -76,6 +83,7 @@ export function ShiftForm({ initial, draft, defaultDate, teachers, data, onChang
       endTime: hasTime ? endTime : undefined,
       subForTeacherId: type === 'sub' ? subForTeacherId || undefined : undefined,
       leaveDays: type === 'off' && useLeave ? leaveDays : undefined,
+      extraLeaveDays: type !== 'off' && isExtra ? extraDays : undefined,
       memo: memo.trim() || undefined,
     });
     onClose();
@@ -146,6 +154,37 @@ export function ShiftForm({ initial, draft, defaultDate, teachers, data, onChang
           </select>
         </div>
       )}
+      {type !== 'off' && (
+        <div className={`leave-box${isExtra ? ' extra' : ''}`}>
+          <div className="check-row">
+            <label>
+              <input type="checkbox" checked={isExtra} onChange={(e) => setIsExtra(e.target.checked)} />
+              추가 근무 (연차 적립)
+            </label>
+            {isExtra && (
+              <select value={extraDays} onChange={(e) => setExtraDays(Number(e.target.value))} style={{ width: 110 }}>
+                <option value={1}>+1일</option>
+                <option value={0.5}>+0.5일</option>
+                <option value={0.25}>+0.25일</option>
+              </select>
+            )}
+          </div>
+          {teacher && isExtra && (
+            leaveInfo?.total != null ? (
+              <div className="leave-summary">
+                {year}년 연차 {leaveInfo.total}일 + 적립 {leaveInfo.earned + willEarn}일 − 사용 {leaveInfo.used}일
+                {' → '}
+                저장 후 잔여 <b>{remainAfter}일</b>
+              </div>
+            ) : (
+              <div className="leave-summary muted">
+                {teacher.name}님의 연차 일수가 설정되어 있지 않습니다. 적립은 기록되며,
+                [학원 관리 → 직원]에서 총 연차를 입력하면 잔여가 계산됩니다.
+              </div>
+            )
+          )}
+        </div>
+      )}
       {type === 'off' && (
         <div className="leave-box">
           <div className="check-row">
@@ -164,7 +203,7 @@ export function ShiftForm({ initial, draft, defaultDate, teachers, data, onChang
           {teacher && (
             leaveInfo?.total != null ? (
               <div className="leave-summary">
-                {year}년 연차 {leaveInfo.total}일 중 {leaveInfo.used}일 사용
+                {year}년 연차 {leaveInfo.total}일{leaveInfo.earned > 0 ? ` + 적립 ${leaveInfo.earned}일` : ''} 중 {leaveInfo.used}일 사용
                 {' → '}
                 저장 후 잔여{' '}
                 <b className={remainAfter != null && remainAfter < 0 ? 'over' : ''}>

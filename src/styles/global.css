@@ -1002,3 +1002,7 @@ button:focus-visible {
 }
 .sync-badge.syncing { background: var(--accent-soft); color: var(--accent); }
 .sync-badge.error { background: var(--danger-soft); color: var(--danger); }
+
+/* 추가 근무 연차 적립 */
+.leave-box.extra { border-color: #2f9e44; background: #ebfbee; }
+.leave-table .earned { color: #2f9e44; }

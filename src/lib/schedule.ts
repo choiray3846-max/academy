@@ -236,7 +236,9 @@ function expandShifts(data: AcademyData, from: DateStr, to: DateStr): Occurrence
             : s.leaveDays === 0.5
               ? '반차'
               : '연차'
-          : SHIFT_TYPE_LABEL[s.type];
+          : s.type !== 'off' && s.extraLeaveDays
+            ? `추가${SHIFT_TYPE_LABEL[s.type]}(+${s.extraLeaveDays})`
+            : SHIFT_TYPE_LABEL[s.type];
       const color =
         s.type === 'off'
           ? s.leaveDays
@@ -454,6 +456,33 @@ export function leaveUsedInYear(data: AcademyData, teacherId: ID, year: number):
     sum += s.leaveDays;
   }
   return sum;
+}
+
+/** 해당 연도에 이 직원이 추가 근무로 적립한 연차 일수 합계 */
+export function leaveEarnedInYear(data: AcademyData, teacherId: ID, year: number): number {
+  const prefix = `${year}-`;
+  let sum = 0;
+  for (const s of data.shifts) {
+    if (s.teacherId !== teacherId) continue;
+    if (s.type === 'off' || !s.extraLeaveDays) continue;
+    if (!s.date.startsWith(prefix)) continue;
+    sum += s.extraLeaveDays;
+  }
+  return sum;
+}
+
+/** 해당 연도에 이 직원이 추가 근무로 적립한 내역 (날짜순) */
+export function extraWorkEntriesInYear(data: AcademyData, teacherId: ID, year: number) {
+  const prefix = `${year}-`;
+  return data.shifts
+    .filter((s) => s.teacherId === teacherId && s.type !== 'off' && s.extraLeaveDays && s.date.startsWith(prefix))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** 해당 연도 잔여 연차 = 총 연차 + 추가 근무 적립 − 사용. 총 연차 미설정이면 null */
+export function leaveRemainingInYear(data: AcademyData, teacher: { id: ID; annualLeaveTotal?: number }, year: number): number | null {
+  if (teacher.annualLeaveTotal == null) return null;
+  return teacher.annualLeaveTotal + leaveEarnedInYear(data, teacher.id, year) - leaveUsedInYear(data, teacher.id, year);
 }
 
 /** 해당 연도에 이 직원이 사용한 연차 내역 (날짜순) */
