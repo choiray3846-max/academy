@@ -1,0 +1,35 @@
+name: Supabase Keep-Alive
+
+# 무료 플랜 Supabase가 7일 동안 요청이 없으면 자동 일시중지되는 걸 막기 위해
+# 3일마다 boards 테이블에 가벼운 조회 요청을 보낸다.
+
+on:
+  schedule:
+    - cron: "0 3 */3 * *" # 3일마다 UTC 03:00 (한국시간 정오)
+  workflow_dispatch: # Actions 탭에서 수동 실행 가능
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase boards table
+        env:
+          SUPABASE_URL: https://twnonsqjxngsyavehddq.supabase.co
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "❌ SUPABASE_ANON_KEY 시크릿이 설정되지 않았습니다."
+            echo "   저장소 Settings → Secrets and variables → Actions 에서 추가하세요."
+            exit 1
+          fi
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "$SUPABASE_URL/rest/v1/boards?select=updated_at&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+          echo "HTTP $STATUS"
+          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ]; then
+            echo "✅ Supabase 깨어있음"
+          else
+            echo "❌ 핑 실패 (HTTP $STATUS)"
+            exit 1
+          fi
