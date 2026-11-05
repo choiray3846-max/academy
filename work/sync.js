@@ -28,6 +28,8 @@ window.WorkStore = (function () {
   let lastError = '';
   let calendar = null; // 지점달력 데이터 (읽기 전용)
   let calendarAt = null;
+  let timetable = null; // 좌석 시간표 데이터 (읽기 전용, 행 id = 학원코드)
+  let timetableAt = null;
   let listeners = [];
   let pushTimer = 0, pollTimer = 0, calTimer = 0, cacheTimer = 0;
   let pushing = false, pushAgain = false;
@@ -192,8 +194,13 @@ window.WorkStore = (function () {
   async function pullCalendar() {
     if (!cfg) return;
     try {
-      const rows = await fetchRows(['calendar:' + cfg.roomId]);
-      if (rows.length && rows[0].updated_at !== calendarAt) { calendar = rows[0].data; calendarAt = rows[0].updated_at; notify(); }
+      const rows = await fetchRows(['calendar:' + cfg.roomId, cfg.roomId]);
+      let changed = false;
+      rows.forEach((r) => {
+        if (r.id === 'calendar:' + cfg.roomId && r.updated_at !== calendarAt) { calendar = r.data; calendarAt = r.updated_at; changed = true; }
+        if (r.id === cfg.roomId && r.updated_at !== timetableAt) { timetable = r.data; timetableAt = r.updated_at; changed = true; }
+      });
+      if (changed) notify();
     } catch (e) { /* 달력은 없어도 앱은 돈다 */ }
   }
   function startLoops() {
@@ -225,13 +232,15 @@ window.WorkStore = (function () {
     get days() { return days; },
     get calendar() { return calendar; },
     get calendarAt() { return calendarAt; },
+    get timetable() { return timetable; },
+    get timetableAt() { return timetableAt; },
     get dirtyCount() { return dirty.size; },
     async connect(c) {
       // 연결 테스트: 서버에 뭐가 있든 병합하므로 덮어쓰기 걱정이 없다.
       const test = { url: c.url, anonKey: c.anonKey, roomId: c.roomId };
       const prev = cfg; cfg = test;
       try { await fetchStamps(); } catch (e) { cfg = prev; throw e; }
-      saveCfg(test); stamps = {}; calendarAt = null;
+      saveCfg(test); stamps = {}; calendarAt = null; timetableAt = null;
       dirty.add('meta'); Object.keys(days).forEach((d) => dirty.add('d:' + d));
       setStatus('syncing'); await pull(true); await pushDirty(); await pullCalendar(); startLoops();
     },

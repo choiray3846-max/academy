@@ -97,6 +97,22 @@ h1,h2,h3{margin:0;text-wrap:balance;line-height:1.3}
 .feed-s{font-weight:600;color:var(--fg)}
 .feed-d{color:var(--fg-3)}
 
+/* 시간표 표시 */
+.tt{color:var(--role-tm);font-weight:600}
+.tt.none{color:var(--fg-3);font-weight:500}
+.board td.tt{white-space:nowrap;font-size:12.5px}
+.row.dim .name,.row.dim .meta{opacity:.55}
+.ttw{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+@media (max-width:520px){.ttw{grid-template-columns:repeat(3,1fr)}}
+.ttd{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12.5px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.ttd.today{border-color:var(--accent);background:var(--accent-soft)}
+.ttd.closed{background:var(--surface-2);color:var(--fg-3)}
+.ttd b{font-size:12px;color:var(--fg-2)}
+.ttd span{display:flex;flex-direction:column;line-height:1.3}
+.ttd span i{font-style:normal;color:var(--fg-3);font-size:11.5px}
+.ttd span em{font-style:normal;color:var(--fg-3);font-size:11px}
+.ttd .none{color:var(--fg-3)}
+
 /* 표 */
 .board-wrap{margin-top:10px;overflow:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);max-height:calc(100vh - 190px - env(safe-area-inset-bottom,0px))}
 table.board{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%;width:max-content}

@@ -39,6 +39,46 @@ function holidayName(k) {
   return holCache[y][k] || null;
 }
 
+// ---------- 시간표 (좌석 시간표 앱, 읽기 전용) ----------
+const BLOCKS = ['A', 'B', 'C'];
+function mondayOf(k) { const d = parseKey(k); const dow = d.getDay(); return shiftK(k, -((dow + 6) % 7)); }
+const ttCache = {};
+/** 날짜별 시간표 요약: {has, closed, note, times[], byName: {이름: [{block, time, subject, teacher, manager, grade}]}} */
+function ttFor(k) {
+  const T = W.timetable; if (!T) return null;
+  const ck = k + '|' + W.timetableAt; if (ttCache[ck]) return ttCache[ck];
+  const ws = mondayOf(k); const di = (parseKey(k).getDay() + 6) % 7; const wk = (T.weeks || {})[ws];
+  const st = T.settings || {}; const ds = (wk && wk.daySettings && wk.daySettings[di]) || {};
+  const times = ds.times || (di === 5 ? st.saturdayTimes : st.weekdayTimes) || [];
+  const res = { has: !!wk, closed: !!ds.closed || di === 6, note: ds.note || '', times, byName: {}, count: 0 };
+  if (wk && !ds.closed) {
+    const sm = {}; (T.students || []).forEach((x) => { sm[x.id] = x; });
+    const tm = {}; (T.teachers || []).forEach((x) => { tm[x.id] = x; });
+    const mm = {}; (T.managers || []).forEach((x) => { mm[x.id] = x; });
+    const day = (wk.days || [])[di];
+    ((day && day.blocks) || []).forEach((bl, bi) => { (bl.groups || []).forEach((g) => { (g.seats || []).forEach((seat) => {
+      if (!seat || !seat.studentId || !sm[seat.studentId]) return; const stu = sm[seat.studentId];
+      (res.byName[stu.name] = res.byName[stu.name] || []).push({ block: BLOCKS[bi], time: times[bi] || '', subject: seat.subject || '', teacher: (tm[g.teacherId] || {}).name || '', manager: (mm[seat.managerId] || {}).name || '', grade: stu.grade || '' });
+    }); }); });
+    res.count = Object.keys(res.byName).length;
+  }
+  ttCache[ck] = res; return res;
+}
+/** 이 학생의 그날 교시 목록 (이름으로 매칭, 동명이인은 학년으로) */
+function ttSessions(k, s) {
+  const t = ttFor(k); if (!t) return null; const list = t.byName[s.name]; if (!list) return [];
+  const same = list.filter((x) => !x.grade || !s.grade || x.grade.replace(/\s/g, '') === s.grade.replace(/\s/g, ''));
+  return same.length ? same : list;
+}
+const ttText = (list) => list.map((x) => x.block + ' ' + (x.subject || '') + (x.teacher ? '(' + esc(x.teacher) + ')' : '')).join(' · ');
+/** 시간표 앱의 주간 보고서 (학생 이름으로) */
+function ttReport(ws, s) {
+  const T = W.timetable; if (!T || !T.reports || !T.reports[ws]) return null;
+  const stu = (T.students || []).find((x) => x.name === s.name && (!x.grade || !s.grade || x.grade.replace(/\s/g, '') === s.grade.replace(/\s/g, ''))) || (T.students || []).find((x) => x.name === s.name);
+  return stu ? T.reports[ws][stu.id] || null : null;
+}
+const ATT_LABEL = { excellent: '우수', good: '양호', normal: '보통', poor: '미흡' };
+
 // ---------- state ----------
 const VIEWS = ['board', 'today', 'students', 'issues', 'requests', 'calendar', 'setup'];
 const S = { staff: {}, students: {}, events: {}, requests: {},
@@ -230,12 +270,14 @@ function fab(act, args) { return '<button type="button" class="fab" data-act="' 
 function vToday() {
   const date = S.date; const isToday = date === todayKey();
   const studs = studentsActive().sort(studentSort);
-  let o = 0, x = 0, blank = 0;
-  studs.forEach((s) => { const e = dayEntry(date, s.id); if (e.att === 'O') o++; else if (e.att === 'X') x++; else blank++; });
+  const tt = ttFor(date);
+  let o = 0, x = 0, blank = 0, due = 0;
+  studs.forEach((s) => { const e = dayEntry(date, s.id); const ss = tt ? ttSessions(date, s) : null; const sched = !tt || (ss && ss.length); if (sched) due++; if (e.att === 'O') o++; else if (e.att === 'X') x++; else if (sched) blank++; });
   const evs = activeEvents(date);
   let html = header('상계2점 업무관리');
   html += '<div class="daybar"><button type="button" class="icon-btn" data-act="day" data-args="-1" aria-label="전날">‹</button><div class="d num">' + fmtK(date) + '</div><button type="button" class="icon-btn" data-act="day" data-args="1" aria-label="다음날">›</button>' + (isToday ? '<span class="today">오늘</span>' : '<button type="button" class="btn sm ghost" data-act="day" data-args="t">오늘로</button>') + '</div>';
-  html += '<div class="stats"><div class="stat"><b class="num">' + studs.length + '</b><span>관리 학생</span></div><div class="stat"><b class="num" style="color:var(--accent)">' + o + '</b><span>등원 O</span></div><div class="stat"><b class="num" style="color:var(--danger)">' + x + '</b><span>등원 X</span></div><div class="stat"><b class="num">' + blank + '</b><span>미입력</span></div></div>';
+  html += '<div class="stats"><div class="stat"><b class="num">' + (tt ? due : studs.length) + '</b><span>' + (tt ? '오늘 예정' : '관리 학생') + '</span></div><div class="stat"><b class="num" style="color:var(--accent)">' + o + '</b><span>등원 O</span></div><div class="stat"><b class="num" style="color:var(--danger)">' + x + '</b><span>등원 X</span></div><div class="stat"><b class="num">' + blank + '</b><span>미입력</span></div></div>';
+  if (tt && (tt.closed || tt.note)) html += '<div class="banner">시간표: ' + esc(tt.note || '휴원') + (tt.closed ? ' (휴원)' : '') + '</div>';
   if (evs.length) html += '<div class="section"><div class="section-h">기간 이슈 <span class="cnt num">' + evs.length + '</span></div>' + evs.map((e) => '<div class="ev-item"><b>' + esc((S.students[e.sid] || {}).name || '?') + '</b> ' + esc(e.type) + (e.text ? ' · ' + esc(e.text) : '') + ' <span class="num">' + fmtMD(e.from) + (e.to && e.to !== e.from ? '~' + fmtMD(e.to) : '') + '</span></div>').join('') + '</div>';
   if (!studs.length) return html + '<div class="section">' + noStudents() + '</div>';
   const mgrs = Object.values(S.staff).sort((a, b) => (a.order || 0) - (b.order || 0)).filter((st) => studs.some((s) => s.manager === st.id));
@@ -244,8 +286,8 @@ function vToday() {
   groups.forEach(([m, list]) => {
     html += '<div class="section"><div class="section-h">' + esc(m.name) + (m.role ? ' ' + esc(m.role) : '') + ' <span class="cnt num">' + list.length + '</span></div><div class="card">';
     list.forEach((s) => {
-      const e = dayEntry(date, s.id); const ev = activeEvents(date, s.id); const hi = hasIssue(e);
-      html += '<div class="row"><button type="button" style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;text-align:left" data-act="openStudentDay" data-args="' + s.id + '">' + dot(s.status) + '<span class="name">' + esc(s.name) + '</span><span class="meta">' + esc(s.school || '') + ' ' + esc(s.grade || '') + (ev.length ? ' · <span class="pill ev">' + esc(ev[0].type) + '</span>' : '') + (hi ? ' · <span class="pill n">이슈</span>' : '') + '</span></button>';
+      const e = dayEntry(date, s.id); const ev = activeEvents(date, s.id); const hi = hasIssue(e); const ss = tt ? ttSessions(date, s) : null;
+      html += '<div class="row' + (tt && ss && !ss.length ? ' dim' : '') + '"><button type="button" style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;text-align:left" data-act="openStudentDay" data-args="' + s.id + '">' + dot(s.status) + '<span class="name">' + esc(s.name) + '</span><span class="meta">' + esc(s.school || '') + ' ' + esc(s.grade || '') + (ss && ss.length ? ' · <span class="tt">' + ttText(ss) + '</span>' : tt && ss ? ' · <span class="tt none">예정 없음</span>' : '') + (ev.length ? ' · <span class="pill ev">' + esc(ev[0].type) + '</span>' : '') + (hi ? ' · <span class="pill n">이슈</span>' : '') + '</span></button>';
       html += '<span class="tail"><span class="seg"><button type="button" class="' + (e.att === 'O' ? 'on' : '') + '" data-act="att" data-args="' + s.id + '|O" aria-label="등원">O</button><button type="button" class="' + (e.att === 'X' ? 'on X' : '') + '" data-act="att" data-args="' + s.id + '|X" aria-label="미등원">X</button></span></span></div>';
     });
     html += '</div></div>';
@@ -263,16 +305,18 @@ function vBoard() {
   studs.sort((a, b) => { const ia = order.indexOf(a.manager), ib = order.indexOf(b.manager); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || studentSort(a, b); });
   const dates = []; for (let i = 0; i < S.range; i++) dates.push(shiftK(S.date, -i));
   const multi = dates.length > 1;
-  const th = ['<th class="c1">매니저</th>', '<th class="c2">학생</th>', '<th>학교</th>', '<th>학년</th>', multi ? '<th>기록일</th>' : '', '<th>등원</th>', '<th>졸음/전자기기</th>', '<th>학생 관리 이슈</th>', '<th>학부모 관리 이슈</th>', '<th>기간 이슈 / 메모</th>'].join('');
+  const ttAny = !!W.timetable;
+  const th = ['<th class="c1">매니저</th>', '<th class="c2">학생</th>', '<th>학교</th>', '<th>학년</th>', ttAny ? '<th>시간표</th>' : '', multi ? '<th>기록일</th>' : '', '<th>등원</th>', '<th>졸음/전자기기</th>', '<th>학생 관리 이슈</th>', '<th>학부모 관리 이슈</th>', '<th>기간 이슈 / 메모</th>'].join('');
   let rows = ''; let ri = 0;
   dates.forEach((d, di) => {
     studs.forEach((s, si) => {
-      const r = ri++; const e = dayEntry(d, s.id); const f = e.f || {};
+      const r = ri++; const e = dayEntry(d, s.id); const f = e.f || {}; const ss = ttAny ? ttSessions(d, s) : null;
       const issue = (k) => '<td class="issue' + (k === 'm' ? ' memo-cell' : '') + '" data-k="' + s.id + '|' + d + '|' + k + '" data-nav="' + r + ',' + (k === 'si' ? 2 : k === 'pi' ? 3 : 4) + '" tabindex="0" data-act="editIssue" data-args="' + s.id + '|' + d + '|' + k + '"><div class="view">' + cellView(k, e[k], s.id, d) + '</div></td>';
       rows += '<tr' + (multi && si === 0 && di > 0 ? ' class="daybreak"' : '') + '>'
         + '<td class="c1 sm">' + esc(staffName(s.manager)) + '</td>'
         + '<td class="c2 name ' + (s.status ? 'st-' + s.status : '') + '" data-act="openDay" data-args="' + s.id + '|' + d + '" title="' + (STATUS_NAME[s.status] || '상태 미설정') + '">' + esc(s.name) + '</td>'
         + '<td class="sm">' + esc(s.school || '') + '</td><td class="sm">' + esc(s.grade || '') + '</td>'
+        + (ttAny ? '<td class="sm tt' + (ss && ss.length ? '' : ' none') + '">' + (ss && ss.length ? ttText(ss) : (ttFor(d) && ttFor(d).has ? '예정 없음' : '')) + '</td>' : '')
         + (multi ? '<td class="date num">' + fmtK(d) + '</td>' : '')
         + '<td class="att"><button type="button" class="' + (e.att || '') + '" data-nav="' + r + ',0" data-act="attCycle" data-args="' + s.id + '|' + d + '">' + (e.att || '–') + '</button></td>'
         + '<td class="f"><input data-nav="' + r + ',1" data-field="drowsy" data-sid="' + s.id + '" data-date="' + d + '" value="' + esc(f.drowsy || '') + '" aria-label="졸음/전자기기" placeholder=""></td>'
@@ -280,6 +324,8 @@ function vBoard() {
         + '</tr>';
     });
   });
+  const tt0 = ttAny ? ttFor(S.date) : null;
+  if (tt0 && (tt0.closed || tt0.note)) html += '<div class="banner">시간표: ' + esc(tt0.note || '휴원') + (tt0.closed ? ' (휴원)' : '') + '</div>';
   html += '<div class="board-wrap"><table class="board"><thead><tr>' + th + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   html += '<p class="help" style="margin:8px 2px 0">등원 칸은 누를 때마다 O → X → 빈칸. 졸음/전자기기와 이슈 칸은 클릭해서 바로 쓰면 다른 칸으로 넘어갈 때 저장돼요. 새로 쓰기 시작하면 작성자 태그([이CM] 같은)가 자동으로 붙어요. 화살표 키로 옆 칸·다른 학생 칸으로 이동(글이 있는 칸에선 Ctrl+화살표), Tab도 돼요. 이슈·메모 칸에선 Ctrl+Enter로 아래 학생. 메모 칸은 태그 없이 자유롭게. 이름을 누르면 상세 창.</p>';
   return html;
@@ -341,12 +387,14 @@ function calItems(k) {
     (c.shifts || []).forEach((s) => { if (s.date !== k || s.type === 'work') return; out.push({ cls: 'shift', title: tname(s.teacherId) + (s.type === 'off' ? ' 휴무' : ' 대강' + (s.subForTeacherId ? '(' + tname(s.subForTeacherId) + ' 대신)' : '')), sub: s.startTime ? s.startTime + '~' + (s.endTime || '') : (s.leaveDays ? '연차 ' + s.leaveDays : ''), memo: s.memo, kind: '근무' }); });
     (c.misc || []).forEach((m) => { if (m.startDate <= k && m.endDate >= k) out.push({ cls: 'misc', title: m.title, sub: m.allDay ? '' : (m.startTime || ''), memo: m.memo, kind: '기타' }); });
   }
+  const t = ttFor(k); if (t && t.has && t.closed && (parseKey(k).getDay() !== 0 || t.note)) out.push({ cls: 'holiday', title: '휴원' + (t.note ? ' · ' + t.note : ''), sub: '좌석 시간표', kind: '시간표' });
+  else if (t && t.note) out.push({ cls: 'misc', title: t.note, sub: '좌석 시간표 메모', kind: '시간표' });
   activeEvents(k).forEach((e) => out.push({ cls: 'stu', title: ((S.students[e.sid] || {}).name || '?') + ' ' + e.type, sub: (e.text || '') + ' ' + fmtMD(e.from) + (e.to && e.to !== e.from ? '~' + fmtMD(e.to) : ''), kind: '학생' }));
   return out;
 }
 function attSummary(k) { const d = days()[k]; if (!d) return null; let o = 0, x = 0; Object.values(d.s || {}).forEach((e) => { if (e.att === 'O') o++; else if (e.att === 'X') x++; }); return o + x ? { o, x } : null; }
 function vCalendar() {
-  let html = header('달력', W.calendar ? '지점달력 연동' : '');
+  let html = header('달력', [W.calendar ? '지점달력' : '', W.timetable ? '시간표' : ''].filter(Boolean).join('·') + (W.calendar || W.timetable ? ' 연동' : ''));
   const [y, m] = S.month.split('-').map(Number); const first = S.month + '-01'; const d0 = parseKey(first); const startDow = d0.getDay();
   const dim = new Date(y, m, 0).getDate(); const cells = [];
   for (let i = 0; i < startDow; i++) cells.push(shiftK(first, i - startDow));
@@ -378,7 +426,7 @@ function vSetup() {
   html += '<div class="section"><div class="section-h">직원 <span class="cnt num">' + staff.filter((x) => x.active !== false).length + '</span><span class="spacer"></span><button type="button" class="btn sm" data-act="editStaff" data-args="">+ 추가</button></div><div class="card">' + (staff.length ? staff.map((x) => '<button type="button" class="row" data-act="editStaff" data-args="' + x.id + '"><span class="name role-' + esc(x.role) + '">' + esc(x.name) + '</span><span class="meta">' + esc(x.role) + (x.active === false ? ' · 비활성' : '') + '</span><span class="tail">' + esc(tag(x.id)) + '</span></button>').join('') : '<div class="empty">직원을 추가하세요. CM, TM, 원장, 코디 역할별로 글씨 색이 구분됩니다.</div>') + '</div></div>';
   const nDays = Object.keys(days()).length, nNotes = allEntries().length;
   html += '<div class="section"><div class="section-h">데이터</div><div class="card"><div class="row"><span class="meta">학생 ' + Object.keys(S.students).length + ' · 일지 ' + nDays + '일 · 이슈 기록 ' + nNotes + ' · 기간이슈 ' + Object.keys(S.events).length + ' · 요청 ' + Object.keys(S.requests).length + '</span></div><div class="row" style="flex-wrap:wrap;gap:8px">' + '<button type="button" class="btn sm" data-act="exportJson">백업 내려받기</button><button type="button" class="btn sm" data-act="importJson">백업 불러오기</button></div></div></div>';
-  html += '<div class="section"><div class="section-h">사용 안내</div><div class="card" style="padding:12px 14px"><ul class="help" style="margin:0;padding-left:18px"><li><b>표</b>: 시트처럼 한 화면. 등원 칸 클릭, 이슈 칸은 바로 타이핑.</li><li><b>작성자 태그</b>는 자동으로 붙어요. CM은 [이CM]처럼 성+CM, 나머지는 [TM]·[원장]·[코디].</li><li><b>기간 이슈</b>(여행·시험·장기 미등원)는 한 번만 등록하면 해당 기간 내내 표시됩니다.</li><li><b>요청</b>은 받는 사람을 지정해 등록하고, 처리되면 체크.</li><li><b>달력</b>은 지점달력 앱의 일정을 읽어와 보여줘요. 행사·상담 등록은 지점달력에서.</li><li>학생 <b>상태색</b>(위험·주황·집중·초록·좋음)은 학생 상세에서 바꿉니다.</li></ul></div></div>';
+  html += '<div class="section"><div class="section-h">사용 안내</div><div class="card" style="padding:12px 14px"><ul class="help" style="margin:0;padding-left:18px"><li><b>표</b>: 시트처럼 한 화면. 등원 칸 클릭, 이슈 칸은 바로 타이핑.</li><li><b>작성자 태그</b>는 자동으로 붙어요. CM은 [이CM]처럼 성+CM, 나머지는 [TM]·[원장]·[코디].</li><li><b>기간 이슈</b>(여행·시험·장기 미등원)는 한 번만 등록하면 해당 기간 내내 표시됩니다.</li><li><b>요청</b>은 받는 사람을 지정해 등록하고, 처리되면 체크.</li><li><b>달력</b>은 지점달력 앱의 일정을 읽어와 보여줘요. 행사·상담 등록은 지점달력에서.</li><li><b>시간표</b>는 좌석 시간표 앱의 배정을 학생 이름으로 맞춰 보여줘요(오늘 교시·과목·강사, 예정 없는 학생은 흐리게). 배정 변경은 시간표 앱에서.</li><li>학생 <b>상태색</b>(위험·주황·집중·초록·좋음)은 학생 상세에서 바꿉니다.</li></ul></div></div>';
   return html;
 }
 
@@ -421,6 +469,13 @@ function shStudent(sh) {
   h += '<div class="sheet-b">';
   h += '<div class="block" style="margin-top:0"><h3>상태 ' + (s.statusAt ? '<span style="font-weight:500">· ' + esc(staffName(s.statusBy)) + ' <span class="num">' + fmtDT(s.statusAt) + '</span></span>' : '') + '</h3><div class="statuses">' + STATUS.map(([k, n]) => '<button type="button" class="' + (s.status === k ? 'on' : '') + '" data-act="setStatus" data-args="' + s.id + '|' + k + '"><i style="background:var(--st-' + k + ')"></i>' + n + '</button>').join('') + '</div></div>';
   if (s.memo) h += '<div class="block"><h3>특이사항</h3><div style="white-space:pre-wrap">' + esc(s.memo) + '</div></div>';
+  if (W.timetable) {
+    const ws = mondayOf(todayKey()); const cells = [];
+    for (let i = 0; i < 6; i++) { const k = shiftK(ws, i); const ss = ttSessions(k, s) || []; const t = ttFor(k); cells.push('<div class="ttd' + (k === todayKey() ? ' today' : '') + (t && t.closed ? ' closed' : '') + '"><b>' + '월화수목금토'[i] + ' <span class="num">' + Number(k.slice(8)) + '</span></b>' + (t && t.closed ? '<span>휴원</span>' : ss.length ? ss.map((x) => '<span>' + x.block + ' ' + esc(x.subject) + (x.teacher ? '<i>' + esc(x.teacher) + '</i>' : '') + (x.time ? '<em class="num">' + esc(x.time) + '</em>' : '') + '</span>').join('') : '<span class="none">–</span>') + '</div>'); }
+    h += '<div class="block"><h3>이번 주 시간표 <span style="font-weight:500;color:var(--fg-3)">· 좌석 시간표 앱</span></h3><div class="ttw">' + cells.join('') + '</div></div>';
+    const rp = ttReport(ws, s);
+    if (rp) h += '<div class="block"><h3>이번 주 보고서 <span style="font-weight:500;color:var(--fg-3)">· 시간표 앱에 적은 것</span></h3><div class="card">' + Object.entries(rp.days || {}).sort().map(([di, d]) => '<div class="tl-day"><div class="dh"><span>' + '월화수목금토일'[Number(di)] + '</span>' + (d.attitude ? '<span class="pill n">' + (ATT_LABEL[d.attitude] || d.attitude) + '</span>' : '') + '</div><div class="kv">' + (d.arrival ? '<span>등원 <b>' + esc(d.arrival) + '</b></span>' : '') + (d.departure ? '<span>하원 <b>' + esc(d.departure) + '</b></span>' : '') + (d.bedtime ? '<span>취침 <b>' + esc(d.bedtime) + '</b></span>' : '') + (d.note ? '<span>' + esc(d.note) + '</span>' : '') + '</div></div>').join('') + (rp.comment ? '<div class="tl-day"><div class="kv"><span>종합 <b>' + esc(rp.comment) + '</b></span></div></div>' : '') + '</div></div>';
+  }
   const evs = Object.values(S.events).filter((e) => e.sid === s.id).sort((a, b) => b.from.localeCompare(a.from));
   h += '<div class="block"><h3>기간 이슈</h3>' + (evs.length ? evs.map((ev) => '<div class="ev-item"><span><b>' + esc(ev.type) + '</b> ' + esc(ev.text || '') + ' <span class="num">' + fmtMD(ev.from) + (ev.to && ev.to !== ev.from ? '~' + fmtMD(ev.to) : '') + '</span></span><button type="button" class="x" data-act="delEvent" data-args="' + ev.id + '" aria-label="삭제">×</button></div>').join('') : '<div style="color:var(--fg-3);font-size:13.5px">없음</div>') + '<div style="margin-top:8px"><button type="button" class="btn sm" data-act="newEvent" data-args="' + s.id + '">+ 기간 이슈</button> <button type="button" class="btn sm" data-act="newRequest" data-args="' + s.id + '">+ 요청</button></div></div>';
   const rows = []; let o = 0, x = 0;
@@ -471,7 +526,8 @@ function shCalDay(sh) {
   const k = sh.date; const items = calItems(k); const hol = holidayName(k); const att = attSummary(k);
   const studs = studentsActive(); const d = days()[k] || { s: {} };
   const xs = studs.filter((s) => (d.s[s.id] || {}).att === 'X');
-  let h = head('<span class="num">' + fmtK(k) + '</span>' + (hol ? ' <span style="color:var(--danger);font-size:14px">' + esc(hol) + '</span>' : ''), att ? '등원 ' + att.o + ' · 미등원 ' + att.x : '출결 기록 없음', '<button type="button" class="btn sm" data-act="gotoBoard" data-args="' + k + '">이날 표 보기</button>');
+  const t = ttFor(k);
+  let h = head('<span class="num">' + fmtK(k) + '</span>' + (hol ? ' <span style="color:var(--danger);font-size:14px">' + esc(hol) + '</span>' : ''), (t && t.has && !t.closed ? '시간표 예정 ' + t.count + '명 · ' : '') + (att ? '등원 ' + att.o + ' · 미등원 ' + att.x : '출결 기록 없음'), '<button type="button" class="btn sm" data-act="gotoBoard" data-args="' + k + '">이날 표 보기</button>');
   h += '<div class="sheet-b"><div class="card">' + (items.length ? items.map((it) => '<div class="cal-item"><i style="background:var(--cal-' + (it.cls === 'stu' ? 'etc' : it.cls) + ')' + (it.cls === 'stu' ? ';background:var(--warn)' : '') + '"></i><div class="b"><div class="t">' + esc(it.title) + ' <span style="font-weight:500;color:var(--fg-3);font-size:12px">' + esc(it.kind) + '</span></div>' + (it.sub ? '<div class="m">' + esc(it.sub) + '</div>' : '') + (it.memo ? '<div class="m" style="white-space:pre-wrap">' + esc(it.memo) + '</div>' : '') + '</div></div>').join('') : '<div class="empty" style="padding:14px">이날 등록된 일정이 없어요.</div>') + '</div>';
   if (xs.length) h += '<div class="block"><h3>미등원 <span class="num" style="color:var(--fg-3)">' + xs.length + '</span></h3><div class="card">' + xs.map((s) => '<button type="button" class="row" data-act="openDay" data-args="' + s.id + '|' + k + '">' + dot(s.status) + '<span class="name">' + esc(s.name) + '</span><span class="meta">' + esc(s.school || '') + ' ' + esc(s.grade || '') + ' · ' + esc(staffName(s.manager)) + '</span></button>').join('') + '</div></div>';
   h += '<div class="block"><button type="button" class="btn sm" data-act="newEvent" data-args="">+ 학생 기간 이슈</button> <a class="btn sm" href="' + CAL_URL + '" target="_blank" rel="noopener">행사·상담은 지점달력에서 ↗</a></div>';
@@ -482,7 +538,7 @@ function shSync() {
   let h = head('여러 기기 공유', '달력·급여명세서와 같은 Supabase, 같은 학원 코드');
   h += '<div class="sheet-b">';
   if (W.cfg) h += '<p class="help" style="margin:0 0 10px">현재 학원 코드 <b>' + esc(cfg.roomId) + '</b>로 공유 중 · 상태: ' + (W.status === 'ok' ? '정상 ✓' : W.status === 'syncing' ? '저장 중…' : '오류 (' + esc(W.lastError) + ')') + '</p>';
-  else h += '<p class="help" style="margin:0 0 10px">연결하면 매니저·원장이 각자 폰이나 PC에서 <b>같은 데이터</b>를 보고, 지점달력의 일정도 달력 탭에 떠요.' + (sib ? ' 이 브라우저의 달력 앱 설정을 그대로 가져올 수 있어요.' : '') + '</p>';
+  else h += '<p class="help" style="margin:0 0 10px">연결하면 매니저·원장이 각자 폰이나 PC에서 <b>같은 데이터</b>를 보고, 지점달력의 일정과 좌석 시간표의 배정도 함께 떠요.' + (sib ? ' 이 브라우저의 달력 앱 설정을 그대로 가져올 수 있어요.' : '') + '</p>';
   if (sib && !W.cfg) h += '<div style="margin-bottom:10px"><button type="button" class="btn sm" data-act="adoptSibling">달력 앱 설정 가져오기</button></div>';
   h += inp('sy-url', 'Supabase 프로젝트 URL', cfg.url || W.DEFAULT_URL, 'https://xxxx.supabase.co') + '<div style="height:10px"></div>' + inp('sy-key', 'anon 공개 키', cfg.anonKey || '', 'eyJhbGci…') + '<div style="height:10px"></div>' + inp('sy-room', '학원 코드 (달력 앱과 같은 코드)', cfg.roomId || '', '예: 우리학원');
   h += '<div class="block" style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn pri" id="sy-go" data-act="connectSync">' + (W.cfg ? '설정 다시 연결' : '연결하기') + '</button>' + (W.cfg ? '<button type="button" class="btn" data-act="refreshSync">지금 새로고침</button><button type="button" class="btn danger" data-act="disconnect">공유 끊기</button>' : '') + '</div>';
