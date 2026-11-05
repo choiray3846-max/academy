@@ -183,6 +183,13 @@ table.dc td.tm.clash.now{box-shadow:inset 0 0 0 2px var(--danger),0 0 10px rgba(
 table.dc td.soon{background:#eef9f2!important;box-shadow:inset 0 0 0 1px #8fd0a8}
 table.dc tr.live td.c2{box-shadow:inset 3px 0 0 #2f9e5a,2px 0 0 var(--line)}
 @media (prefers-reduced-motion:no-preference){table.dc td.now{animation:glow 1.6s ease-in-out infinite alternate}@keyframes glow{from{box-shadow:inset 0 0 0 2px #2f9e5a,0 0 4px rgba(47,158,90,.3)}to{box-shadow:inset 0 0 0 2px #2f9e5a,0 0 12px rgba(47,158,90,.75)}}}
+table.dc td.drag-h{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap}
+table.dc td.drag-h .grip{color:var(--line-2);font-size:11px;letter-spacing:-2px;margin-right:3px}
+table.dc td.drag-h:hover .grip{color:var(--fg-3)}
+table.dc tr.dragging td{background:var(--accent-soft)!important;opacity:.85}
+table.dc tr.dragging td.drag-h{cursor:grabbing}
+table.dc th.c1,table.dc td.c1{min-width:48px}
+table.dc th.c2,table.dc td.c2{left:48px}
 table.dc td.offc{text-align:center;padding:3px}
 table.dc tr.off td{background:var(--surface-2);color:var(--fg-3)}
 table.dc tr.off td.f input:disabled{opacity:.35}

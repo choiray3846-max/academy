@@ -99,6 +99,8 @@ const staffRole = (id) => (S.staff[id] ? S.staff[id].role : '');
 const tag = (id) => { const s = S.staff[id]; if (!s) return '[?]'; return s.role === 'CM' ? '[' + s.name[0] + 'CM]' : '[' + s.role + ']'; };
 const studentsActive = () => Object.values(S.students).filter((s) => s.active !== false);
 const studentSort = (a, b) => gradeRank(b.grade) - gradeRank(a.grade) || a.name.localeCompare(b.name, 'ko');
+/** 드래그로 정한 순서(order)가 있으면 그게 먼저, 없으면 학년·이름순 */
+const orderSort = (a, b) => ((a.order == null ? 1e9 : a.order) - (b.order == null ? 1e9 : b.order)) || studentSort(a, b);
 const dayEntry = (date, sid) => W.entry(date, sid);
 const getF = (e, field) => (field.startsWith('dc.') ? ((e.dc || {})[field.slice(3)] || '') : (e[field] || ''));
 const DC_FIELDS = [['arr', '등원 약속'], ['dep', '하원 예정'], ['sc', 'SC 시간'], ['act', '실제 등원'], ['dc1t', '1차 DC 시간'], ['dc1p', '1차 DC 담당'], ['dc2t', '2차 DC 시간'], ['dc2p', '2차 DC 담당'], ['tut', '개별지도']];
@@ -301,7 +303,7 @@ let toastT; function toast(msg) { const t = $('#toasts'); t.innerHTML = '<div cl
 // ---------- render ----------
 let raf = 0, pending = false;
 const typing = () => { const a = document.activeElement; return a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && a.type !== 'search')) && $('#app').contains(a); };
-function render() { if (typing()) { pending = true; return; } if (raf) return; raf = requestAnimationFrame(() => { raf = 0; if (typing()) { pending = true; return; } draw(); }); }
+function render() { if (typing() || drag) { pending = true; return; } if (raf) return; raf = requestAnimationFrame(() => { raf = 0; if (typing()) { pending = true; return; } draw(); }); }
 document.addEventListener('focusout', (e) => { if (pending && $('#app').contains(e.target)) { pending = false; setTimeout(() => { if (!typing()) render(); else pending = true; }, 80); } });
 function draw() {
   refresh();
@@ -347,7 +349,7 @@ function fab(act, args) { return '<button type="button" class="fab" data-act="' 
 // ---- 오늘 ----
 function vToday() {
   const date = S.date; const isToday = date === todayKey();
-  const studs = studentsActive().sort(studentSort);
+  const studs = studentsActive().sort(orderSort);
   const tt = ttFor(date);
   let o = 0, x = 0, blank = 0, due = 0;
   studs.forEach((s) => { const e = dayEntry(date, s.id); const ss = tt ? ttSessions(date, s) : null; const sched = !tt || (ss && ss.length); if (sched) due++; if (e.att === 'O') o++; else if (e.att === 'X') x++; else if (sched) blank++; });
@@ -380,7 +382,7 @@ function vBoard() {
   const studs = studentsActive();
   if (!studs.length) return html + '<div class="section">' + noStudents() + '</div>';
   const order = Object.values(S.staff).sort((a, b) => (a.order || 0) - (b.order || 0)).map((m) => m.id);
-  studs.sort((a, b) => { const ia = order.indexOf(a.manager), ib = order.indexOf(b.manager); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || studentSort(a, b); });
+  studs.sort((a, b) => { const ia = order.indexOf(a.manager), ib = order.indexOf(b.manager); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || orderSort(a, b); });
   const dates = []; for (let i = 0; i < S.range; i++) dates.push(shiftK(S.date, -i));
   const multi = dates.length > 1;
   const ttAny = !!W.timetable;
@@ -419,7 +421,7 @@ function vDc() {
   if (S.dcMgr === null) S.dcMgr = (me() && me().role === 'CM' && studsAll.some((x) => x.manager === S.me)) ? S.me : '';
   const mgrs = Object.values(S.staff).sort((a, b) => (a.order || 0) - (b.order || 0)).filter((m) => studsAll.some((x) => x.manager === m.id));
   html += '<div class="filters" style="margin-top:6px"><button type="button" class="pill ' + (!S.dcMgr ? 'on' : '') + '" data-act="dcMgr" data-args="">전체</button>' + mgrs.map((m) => '<button type="button" class="pill ' + (S.dcMgr === m.id ? 'on' : '') + '" data-act="dcMgr" data-args="' + m.id + '">' + esc(m.name) + '</button>').join('') + '</div>';
-  const studs = studsAll.filter((x) => !S.dcMgr || x.manager === S.dcMgr).sort(studentSort);
+  const studs = studsAll.filter((x) => !S.dcMgr || x.manager === S.dcMgr).sort(orderSort);
   const tt = ttFor(date);
   // 담당자 겹침: 전체 학생 기준으로 같은 담당자가 같은 시간에 두 명 이상
   const byPerson = {};
@@ -444,8 +446,8 @@ function vDc() {
     const tutAuto = !dc.tut ? ttTutText(date, st) : '';
     const inp = (k, c, ph, wide) => { const auto = k === 'tut' && tutAuto; const rng = k === 'tut' ? rangesIn(auto ? tutAuto : (dc.tut || '')).map((x) => x[0] + '-' + x[1]).join(',') : ''; return '<td class="f' + (wide ? ' w' : '') + (k === 'dc1p' || k === 'dc2p' ? ' p' : '') + (k === 'tut' && cls.unreadable ? ' unread' : '') + (auto ? ' auto' : '') + '"' + (rng && !off ? ' data-rng="' + rng + '"' : '') + (k === 'tut' && cls.unreadable ? ' title="시간을 못 읽었어요. 6:35-8:05 처럼 적으면 겹침 검사가 돼요"' : auto ? ' title="시간표 앱에서 가져온 값. 직접 고치면 그게 우선이고, 지우면 다시 시간표 값이 떠요"' : '') + '><input data-dcf="' + k + '" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r + ',' + c + '" value="' + esc(auto ? tutAuto : (dc[k] || '')) + '"' + (off ? ' disabled' : '') + (auto ? ' data-auto="1"' : '') + '>' + (k === 'tut' && cls.unreadable ? '<span class="wi q" aria-label="시간 못 읽음">?</span>' : '') + '</td>'; };
     const txt = (k, c) => '<td class="issue dcx" data-k="' + st.id + '|' + date + '|dc.' + k + '" data-nav="' + r + ',' + c + '" tabindex="0" data-act="editIssue" data-args="' + st.id + '|' + date + '|dc.' + k + '"><div class="view">' + cellView('dc.' + k, dc[k], st.id, date) + '</div></td>';
-    rows += '<tr class="' + (off ? 'off' : '') + '">'
-      + '<td class="c1 num">' + (i + 1) + '</td>'
+    rows += '<tr class="' + (off ? 'off' : '') + '" data-sid="' + st.id + '">'
+      + '<td class="c1 num drag-h" title="끌어서 순서 바꾸기"><span class="grip">⋮⋮</span>' + (i + 1) + '</td>'
       + '<td class="c2 name ' + (st.status ? 'st-' + st.status : '') + '" data-act="openDay" data-args="' + st.id + '|' + date + '">' + esc(st.name) + '</td>'
       + '<td class="sm">' + esc(st.school || '') + '</td><td class="sm">' + esc(st.grade || '') + '</td>'
       + inp('arr', 0, '') + inp('dep', 1, '') + inp('sc', 2, '') + inp('act', 3, '')
@@ -460,7 +462,7 @@ function vDc() {
   if (clashN || dupN) html += '<div class="banner' + (clashN ? ' err' : '') + '">' + (clashN ? '수업과 겹치는 DC ' + clashN + '건 (빨강)' : '') + (clashN && dupN ? ' · ' : '') + (dupN ? '같은 담당자 같은 시간 ' + dupN + '건 (주황)' : '') + '. 칸 위에 마우스를 올리면 뭐랑 겹치는지 나와요.</div>';
   html += '<div class="board-wrap dc-wrap"><table class="board dc"><thead><tr>' + cols.map((c, i) => '<th class="' + (i === 0 ? 'c1' : i === 1 ? 'c2' : '') + '">' + c + '</th>').join('') + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   html += '<div class="dc-note"><label for="dc-ftr">하단 메모</label><textarea id="dc-ftr" data-dayroot="ftr" data-date="' + date + '" data-live="yes" rows="2">' + esc(doc.ftr || '') + '</textarea></div>';
-  html += '<p class="help" style="margin:8px 2px 0">예전 DC관리 시트와 같은 구성이에요. DC 시간은 8:00처럼 치면 돼요(800, 8시도 됨). 시작만 치면 끝은 15분 뒤로 자동(바꿔도 됨). 개별지도 칸은 시간표 앱 배정이 자동으로 들어오고(직접 고치면 그게 우선), DC가 그 시간과 겹치면 빨강, 같은 담당자가 같은 시간에 두 명이면 주황. 오늘 날짜에선 지금 진행 중인 DC·수업 칸에 초록불이 들어오고, 10분 안에 시작하면 연한 초록. 개별지도 시간을 못 읽으면 ?가 떠요. 전달사항·NOTE는 클릭해서 메모. 등원 O를 찍으면 실제 등원 시간이 자동으로 들어가요(오늘만). 등하원 칸은 학생 고정 정보라 한 번 적으면 매일 보여요. 전날 값 채우기는 빈 칸만 채우고 적힌 건 안 건드려요. 화살표·Tab으로 칸 이동, 인쇄는 가로 A4.</p>';
+  html += '<p class="help" style="margin:8px 2px 0">예전 DC관리 시트와 같은 구성이에요. DC 시간은 8:00처럼 치면 돼요(800, 8시도 됨). 시작만 치면 끝은 15분 뒤로 자동(바꿔도 됨). 개별지도 칸은 시간표 앱 배정이 자동으로 들어오고(직접 고치면 그게 우선), DC가 그 시간과 겹치면 빨강, 같은 담당자가 같은 시간에 두 명이면 주황. 오늘 날짜에선 지금 진행 중인 DC·수업 칸에 초록불이 들어오고, 10분 안에 시작하면 연한 초록. 개별지도 시간을 못 읽으면 ?가 떠요. 전달사항·NOTE는 클릭해서 메모. 등원 O를 찍으면 실제 등원 시간이 자동으로 들어가요(오늘만). 등하원 칸은 학생 고정 정보라 한 번 적으면 매일 보여요. 전날 값 채우기는 빈 칸만 채우고 적힌 건 안 건드려요. 화살표·Tab으로 칸 이동, 인쇄는 가로 A4. 맨 왼쪽 번호 칸을 끌어서 학생 순서를 바꿀 수 있고(표·오늘 탭에도 같은 순서), 저장돼서 다른 기기에서도 같아요.</p>';
   return html;
 }
 
@@ -701,6 +703,39 @@ function submitSheet() {
     W.upsert('staff', sh.id || null, { name, role: v('st-role'), order: Number(v('st-order') || 0), active: v('st-active') === '1' });
   }
   toast('저장했어요'); S.sheet = null; render();
+}
+
+// ---------- 드래그로 학생 순서 바꾸기 (일정 탭) ----------
+let drag = null;
+document.addEventListener('pointerdown', (e) => {
+  const h = e.target.closest('.drag-h'); if (!h || e.button) return;
+  const tr = h.closest('tr[data-sid]'); if (!tr) return;
+  drag = { tr, tbody: tr.parentElement, sid: tr.dataset.sid, moved: false, h };
+  tr.classList.add('dragging'); try { h.setPointerCapture(e.pointerId); } catch (x) { /* noop */ }
+  e.preventDefault();
+});
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return; e.preventDefault();
+  const el = document.elementFromPoint(e.clientX, e.clientY); const tr = el && el.closest ? el.closest('tr[data-sid]') : null;
+  if (!tr || tr === drag.tr || tr.parentElement !== drag.tbody) return;
+  const rect = tr.getBoundingClientRect(); const after = e.clientY > rect.top + rect.height / 2;
+  drag.tbody.insertBefore(drag.tr, after ? tr.nextSibling : tr); drag.moved = true;
+});
+function endDrag() {
+  if (!drag) return; const d = drag; drag = null; d.tr.classList.remove('dragging');
+  if (d.moved) commitOrder([...d.tbody.querySelectorAll('tr[data-sid]')].map((t) => t.dataset.sid));
+  if (pending) { pending = false; render(); }
+}
+document.addEventListener('pointerup', endDrag); document.addEventListener('pointercancel', endDrag);
+/** 화면에 보이는 학생들의 새 순서를 전체 순서에 끼워 넣고 번호를 다시 매긴다 */
+function commitOrder(visible) {
+  if (!needMe()) return;
+  const full = studentsActive().sort(orderSort); const ids = full.map((x) => x.id);
+  const slots = ids.map((id, i) => (visible.includes(id) ? i : -1)).filter((i) => i >= 0);
+  const next = ids.slice(); slots.forEach((pos, j) => { next[pos] = visible[j]; });
+  let n = 0; next.forEach((id, i) => { const o = (i + 1) * 10; if (S.students[id] && S.students[id].order !== o) { W.upsert('students', id, { order: o }); n++; } });
+  [...document.querySelectorAll('table.dc tbody tr[data-sid]')].forEach((tr, i) => { const c = tr.querySelector('td.c1'); if (c) c.lastChild.nodeValue = String(i + 1); });
+  if (n) toast('순서를 저장했어요');
 }
 
 // ---------- 지금 시간 표시 (일정 탭) ----------
