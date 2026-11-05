@@ -137,6 +137,13 @@ const A = {
   attCycle(sid, date) { if (!needMe()) return; const cur = dayEntry(date, sid).att || ''; const nv = cur === '' ? 'O' : cur === 'O' ? 'X' : ''; W.patchEntry(date, sid, 'att', nv, S.me); if (nv === 'O' && date === todayKey() && !getF(dayEntry(date, sid), 'dc.act')) saveDc(date, sid, 'act', nowHM()); },
   dcOff(sid, date) { if (!needMe()) return; const dc = Object.assign({}, dayEntry(date, sid).dc || {}); dc.off = !dc.off; W.patchEntry(date, sid, 'dc', dc, S.me); },
   dcMgr(id) { S.dcMgr = S.dcMgr === id ? '' : id; render(); },
+  delStudent(sid) { openSheet({ kind: 'delstu', sid }); },
+  delStudentDo(sid, mode) {
+    if (!needMe()) return; const st = S.students[sid]; if (!st) return;
+    if (mode === 'archive') { W.upsert('students', sid, { active: false, archivedAt: nowIso(), archivedBy: S.me }); toast(st.name + ' 퇴원/보관 처리했어요. 학생 탭 → 퇴원/보관에서 되돌릴 수 있어요'); }
+    else { W.remove('students', sid); toast(st.name + ' 명단에서 삭제했어요'); }
+    S.sheet = null; render();
+  },
   dcCopy() {
     if (!needMe()) return; const date = S.date; let n = 0;
     const prevDates = Object.keys(days()).filter((d) => d < date && d >= shiftK(date, -14)).sort().reverse();
@@ -429,7 +436,7 @@ function vDc() {
   let clashN = 0, dupN = 0;
   // 상단 안내 / 하단 직원 일정 메모 (하루 단위)
   html += '<div class="dc-note"><label for="dc-hdr">상단 안내</label><textarea id="dc-hdr" data-dayroot="hdr" data-date="' + date + '" data-live="yes" rows="1">' + esc(doc.hdr || '') + '</textarea></div>';
-  const cols = ['No', '학생', '학교', '학년', '등원<br>약속', '하원<br>예정', 'SC', '실제<br>등원', '등원', '1차 DC<br>시간', '1차 DC<br>담당', '2차 DC<br>시간', '2차 DC<br>담당', '개별지도', '등하원', '매니저 → DC담당자', 'DC담당자 → 매니저', 'NOTE', '수행평가', 'OFF'];
+  const cols = ['No', '학생', '학교', '학년', '등원<br>약속', '하원<br>예정', 'SC', '실제<br>등원', '등원', '1차 DC<br>시간', '1차 DC<br>담당', '2차 DC<br>시간', '2차 DC<br>담당', '개별지도', '등하원', '매니저 → DC담당자', 'DC담당자 → 매니저', 'NOTE', '수행평가', 'OFF', ''];
   let rows = '';
   studs.forEach((st, i) => {
     const e = dayEntry(date, st.id); const dc = e.dc || {}; const off = !!dc.off; const r = i;
@@ -457,12 +464,13 @@ function vDc() {
       + '<td class="f w"><textarea data-sched="' + st.id + '" data-nav="' + r + ',12" rows="2">' + esc(st.sched || st.days || '') + '</textarea></td>'
       + txt('toDc', 13) + txt('fromDc', 14) + txt('note', 15) + txt('perf', 16)
       + '<td class="offc"><button type="button" class="ck ' + (off ? 'on' : '') + '" data-act="dcOff" data-args="' + st.id + '|' + date + '">' + (off ? 'OFF' : '–') + '</button></td>'
+      + '<td class="offc"><button type="button" class="ck del" data-act="delStudent" data-args="' + st.id + '" title="명단에서 빼기" aria-label="삭제">×</button></td>'
       + '</tr>';
   });
   if (clashN || dupN) html += '<div class="banner' + (clashN ? ' err' : '') + '">' + (clashN ? '수업과 겹치는 DC ' + clashN + '건 (빨강)' : '') + (clashN && dupN ? ' · ' : '') + (dupN ? '같은 담당자 같은 시간 ' + dupN + '건 (주황)' : '') + '. 칸 위에 마우스를 올리면 뭐랑 겹치는지 나와요.</div>';
   html += '<div class="board-wrap dc-wrap"><table class="board dc"><thead><tr>' + cols.map((c, i) => '<th class="' + (i === 0 ? 'c1' : i === 1 ? 'c2' : '') + '">' + c + '</th>').join('') + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   html += '<div class="dc-note"><label for="dc-ftr">하단 메모</label><textarea id="dc-ftr" data-dayroot="ftr" data-date="' + date + '" data-live="yes" rows="2">' + esc(doc.ftr || '') + '</textarea></div>';
-  html += '<p class="help" style="margin:8px 2px 0">예전 DC관리 시트와 같은 구성이에요. DC 시간은 8:00처럼 치면 돼요(800, 8시도 됨). 시작만 치면 끝은 15분 뒤로 자동(바꿔도 됨). 개별지도 칸은 시간표 앱 배정이 자동으로 들어오고(직접 고치면 그게 우선), DC가 그 시간과 겹치면 빨강, 같은 담당자가 같은 시간에 두 명이면 주황. 오늘 날짜에선 지금 진행 중인 DC·수업 칸에 초록불이 들어오고, 10분 안에 시작하면 연한 초록. 개별지도 시간을 못 읽으면 ?가 떠요. 전달사항·NOTE는 클릭해서 메모. 등원 O를 찍으면 실제 등원 시간이 자동으로 들어가요(오늘만). 등하원 칸은 학생 고정 정보라 한 번 적으면 매일 보여요. 전날 값 채우기는 빈 칸만 채우고 적힌 건 안 건드려요. 화살표·Tab으로 칸 이동, 인쇄는 가로 A4. 맨 왼쪽 번호 칸을 끌어서 학생 순서를 바꿀 수 있고(표·오늘 탭에도 같은 순서), 저장돼서 다른 기기에서도 같아요.</p>';
+  html += '<p class="help" style="margin:8px 2px 0">예전 DC관리 시트와 같은 구성이에요. DC 시간은 8:00처럼 치면 돼요(800, 8시도 됨). 시작만 치면 끝은 15분 뒤로 자동(바꿔도 됨). 개별지도 칸은 시간표 앱 배정이 자동으로 들어오고(직접 고치면 그게 우선), DC가 그 시간과 겹치면 빨강, 같은 담당자가 같은 시간에 두 명이면 주황. 오늘 날짜에선 지금 진행 중인 DC·수업 칸에 초록불이 들어오고, 10분 안에 시작하면 연한 초록. 개별지도 시간을 못 읽으면 ?가 떠요. 전달사항·NOTE는 클릭해서 메모. 등원 O를 찍으면 실제 등원 시간이 자동으로 들어가요(오늘만). 등하원 칸은 학생 고정 정보라 한 번 적으면 매일 보여요. 전날 값 채우기는 빈 칸만 채우고 적힌 건 안 건드려요. 화살표·Tab으로 칸 이동, 인쇄는 가로 A4. 맨 왼쪽 번호 칸을 끌어서 학생 순서를 바꿀 수 있고(표·오늘 탭에도 같은 순서), 저장돼서 다른 기기에서도 같아요. 맨 오른쪽 ×는 학생을 명단에서 빼기(퇴원/보관 또는 삭제).</p>';
   return html;
 }
 
@@ -571,7 +579,7 @@ function drawLayer() {
   const L = $('#layer'); const sh = S.sheet;
   if (!sh) { L.innerHTML = ''; document.body.style.overflow = ''; return; }
   document.body.style.overflow = 'hidden';
-  const body = sh.kind === 'sday' ? shDay(sh) : sh.kind === 'student' ? shStudent(sh) : sh.kind === 'sedit' ? shStudentEdit(sh) : sh.kind === 'event' ? shEvent(sh) : sh.kind === 'request' ? shRequest(sh) : sh.kind === 'me' ? shMe(sh) : sh.kind === 'calday' ? shCalDay(sh) : sh.kind === 'sync' ? shSync(sh) : shStaff(sh);
+  const body = sh.kind === 'sday' ? shDay(sh) : sh.kind === 'student' ? shStudent(sh) : sh.kind === 'sedit' ? shStudentEdit(sh) : sh.kind === 'event' ? shEvent(sh) : sh.kind === 'request' ? shRequest(sh) : sh.kind === 'me' ? shMe(sh) : sh.kind === 'calday' ? shCalDay(sh) : sh.kind === 'sync' ? shSync(sh) : sh.kind === 'delstu' ? shDelStudent(sh) : shStaff(sh);
   const prev = {}; L.querySelectorAll('input,textarea,select').forEach((i) => { if (i.id) prev[i.id] = { v: i.value, f: document.activeElement === i, s: i.selectionStart }; });
   const scroll = (L.querySelector('.sheet-b') || {}).scrollTop || 0;
   L.innerHTML = '<div class="scrim" data-act="close"></div><div class="sheet" role="dialog" aria-modal="true"><div class="sheet-in"><div class="grab"></div>' + body + '</div></div>';
@@ -669,6 +677,14 @@ function shCalDay(sh) {
   if (xs.length) h += '<div class="block"><h3>미등원 <span class="num" style="color:var(--fg-3)">' + xs.length + '</span></h3><div class="card">' + xs.map((s) => '<button type="button" class="row" data-act="openDay" data-args="' + s.id + '|' + k + '">' + dot(s.status) + '<span class="name">' + esc(s.name) + '</span><span class="meta">' + esc(s.school || '') + ' ' + esc(s.grade || '') + ' · ' + esc(staffName(s.manager)) + '</span></button>').join('') + '</div></div>';
   h += '<div class="block"><button type="button" class="btn sm" data-act="newEvent" data-args="">+ 학생 기간 이슈</button> <a class="btn sm" href="' + CAL_URL + '" target="_blank" rel="noopener">행사·상담은 지점달력에서 ↗</a></div>';
   return h + '</div>';
+}
+function shDelStudent(sh) {
+  const st = S.students[sh.sid] || { name: '?' };
+  let h = head(esc(st.name) + ' 명단에서 빼기', esc(st.school || '') + ' ' + esc(st.grade || '') + ' · 담당 ' + esc(staffName(st.manager)));
+  h += '<div class="sheet-b"><div class="card"><button type="button" class="row" data-act="delStudentDo" data-args="' + sh.sid + '|archive"><span class="name">퇴원 / 보관 처리</span><span class="meta">명단에서만 빠지고 기록은 전부 남아요. 학생 탭의 퇴원/보관에서 다시 살릴 수 있어요 (추천)</span><span class="tail">›</span></button>'
+    + '<button type="button" class="row" data-act="delStudentDo" data-args="' + sh.sid + '|delete"><span class="name" style="color:var(--danger)">완전 삭제</span><span class="meta">명단에서 지워요. 그동안의 일지 기록은 날짜별로 남지만 이름으로는 못 찾아요</span><span class="tail">›</span></button></div></div>';
+  h += '<div class="sheet-f"><button type="button" class="btn" data-act="close">취소</button></div>';
+  return h;
 }
 function shSync() {
   const cfg = W.cfg || {}; const sib = W.siblingCfg();

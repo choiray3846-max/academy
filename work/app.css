@@ -191,6 +191,9 @@ table.dc tr.dragging td.drag-h{cursor:grabbing}
 table.dc th.c1,table.dc td.c1{min-width:48px}
 table.dc th.c2,table.dc td.c2{left:48px}
 table.dc td.offc{text-align:center;padding:3px}
+table.dc .ck.del{color:var(--fg-3);padding:3px 7px;font-size:14px;line-height:1}
+table.dc .ck.del:hover{color:var(--danger);border-color:var(--danger)}
+@media print{table.dc .ck.del,table.dc th:last-child{display:none}}
 table.dc tr.off td{background:var(--surface-2);color:var(--fg-3)}
 table.dc tr.off td.f input:disabled{opacity:.35}
 table.dc th.c1,table.dc td.c1{min-width:34px;text-align:center}
