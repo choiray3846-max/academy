@@ -99,24 +99,29 @@ window.WorkStore = (function () {
   }
 
   // ---------- Supabase REST ----------
+  // 응답이 15초 넘게 없으면 끊어서 '저장중…'에 영원히 머물지 않게 한다.
+  function fetchT(url, opts) {
+    const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 15000);
+    return fetch(url, Object.assign({}, opts, { signal: ac.signal })).catch((e) => { throw new Error(e.name === 'AbortError' ? '서버 응답 없음 (15초)' : '네트워크 오류'); }).finally(() => clearTimeout(t));
+  }
   function headers() { return { apikey: cfg.anonKey, Authorization: 'Bearer ' + cfg.anonKey, 'Content-Type': 'application/json' }; }
   function endpoint() { return cfg.url.replace(/\/+$/, '').replace(/\/rest\/v1$/, '') + '/rest/v1/boards'; }
   const rowId = (key) => PREFIX + cfg.roomId + (key ? ':' + key : '');
   async function fetchRows(ids) {
     if (!ids.length) return [];
     const q = 'id=in.(' + ids.map((x) => '"' + x.replace(/"/g, '\\"') + '"').join(',') + ')';
-    const res = await fetch(endpoint() + '?' + encodeURI(q) + '&select=id,data,updated_at', { headers: headers() });
+    const res = await fetchT(endpoint() + '?' + encodeURI(q) + '&select=id,data,updated_at', { headers: headers() });
     if (!res.ok) throw new Error('서버 응답 오류 (' + res.status + ')');
     return res.json();
   }
   async function fetchStamps() {
-    const res = await fetch(endpoint() + '?id=like.' + encodeURIComponent(PREFIX + cfg.roomId + '*') + '&select=id,updated_at', { headers: headers() });
+    const res = await fetchT(endpoint() + '?id=like.' + encodeURIComponent(PREFIX + cfg.roomId + '*') + '&select=id,updated_at', { headers: headers() });
     if (!res.ok) throw new Error('서버 응답 오류 (' + res.status + ')');
     return res.json();
   }
   async function upsertRow(id, data) {
     const updatedAt = nowIso();
-    const res = await fetch(endpoint() + '?on_conflict=id', {
+    const res = await fetchT(endpoint() + '?on_conflict=id', {
       method: 'POST', headers: Object.assign(headers(), { Prefer: 'resolution=merge-duplicates' }),
       body: JSON.stringify({ id, data, updated_at: updatedAt }),
     });
