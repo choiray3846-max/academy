@@ -181,7 +181,7 @@ window.WorkStore = (function () {
         got.forEach((r) => { applyRemote(r.id, r.data); stamps[r.id] = r.updated_at; });
       }
       if (want.length) { saveCacheSoon(); }
-      if (status !== 'syncing') setStatus('ok'); else notify();
+      if (!pushing) setStatus('ok'); else notify();
     } catch (e) { setStatus('error', e.message || '연결 실패'); }
   }
   async function pullCalendar() {
