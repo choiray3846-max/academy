@@ -71,6 +71,10 @@ function ttSessions(k, s) {
   return same.length ? same : list;
 }
 const ttText = (list) => list.map((x) => x.block + ' ' + (x.subject || '') + (x.teacher ? '(' + esc(x.teacher) + ')' : '')).join(' · ');
+/** 시간표 앱에 이 학생이 등록돼 있는지 (이름 기준) */
+function ttKnown(s) { const T = W.timetable; return !!(T && (T.students || []).some((x) => x.name === s.name)); }
+/** 개별지도 칸 자동값: 시간표 교시를 '5:00~6:30 수학' 형식으로. 교시 없으면 '수업X', 시간표에 없는 학생이면 '' */
+function ttTutText(date, s) { const t = ttFor(date); if (!t || !t.has || t.closed) return ''; const ss = ttSessions(date, s) || []; if (ss.length) return ss.map((x) => (x.time ? x.time + ' ' : x.block + ' ') + (x.subject || '')).join(', '); return ttKnown(s) ? '수업X' : ''; }
 /** 시간표 앱의 주간 보고서 (학생 이름으로) */
 function ttReport(ws, s) {
   const T = W.timetable; if (!T || !T.reports || !T.reports[ws]) return null;
@@ -137,7 +141,8 @@ const A = {
     studentsActive().forEach((st) => {
       const cur = Object.assign({}, dayEntry(date, st.id).dc || {}); let changed = false;
       for (const d of prevDates) { const pe = dayEntry(d, st.id); if (!pe.dc || pe.dc.off) continue;
-        ['arr', 'dep', 'sc', 'dc1t', 'dc1p', 'dc2t', 'dc2p', 'tut', 'note', 'perf'].forEach((k) => { if (!cur[k] && pe.dc[k]) { cur[k] = pe.dc[k]; changed = true; } });
+        const hasTT = !!ttTutText(date, st);
+        ['arr', 'dep', 'sc', 'dc1t', 'dc1p', 'dc2t', 'dc2p', 'tut', 'note', 'perf'].forEach((k) => { if (k === 'tut' && hasTT) return; if (!cur[k] && pe.dc[k]) { cur[k] = pe.dc[k]; changed = true; } });
         break; }
       if (changed) { W.patchEntry(date, st.id, 'dc', cur, S.me); n++; }
     });
@@ -211,7 +216,7 @@ document.addEventListener('change', (e) => {
     const val = si.value ? si.value + (ei.value ? '-' + ei.value : '') : '';
     saveDc(tp.dataset.date, tp.dataset.sid, key, val); return;
   }
-  const dc = e.target.closest('[data-dcf]'); if (dc) { saveDc(dc.dataset.date, dc.dataset.sid, dc.dataset.dcf, dc.value.trim()); return; }
+  const dc = e.target.closest('[data-dcf]'); if (dc) { if (dc.dataset.auto && dc.value.trim() === ttTutText(dc.dataset.date, S.students[dc.dataset.sid] || {})) return; saveDc(dc.dataset.date, dc.dataset.sid, dc.dataset.dcf, dc.value.trim()); return; }
   const sc = e.target.closest('[data-sched]'); if (sc) { const st = S.students[sc.dataset.sched]; if (st && (st.sched || '') !== sc.value.trim()) W.upsert('students', st.id, { sched: sc.value.trim() }); return; }
   const dr = e.target.closest('[data-dayroot]'); if (dr) { if (!needMe()) return; const cur = (days()[dr.dataset.date] || {})[dr.dataset.dayroot] || ''; if (cur !== dr.value.trim()) W.patchDay(dr.dataset.date, dr.dataset.dayroot, dr.value.trim(), S.me); return; }
   const f = e.target.closest('[data-field]'); if (!f) return;
@@ -435,7 +440,8 @@ function vDc() {
       return '<td class="f tm ' + kind + '" title="' + esc(warn.join(' / ')) + '"><input type="text" inputmode="decimal" data-dct="' + tk + '|s" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r0 + ',' + c + '" value="' + sv + '"' + (off ? ' disabled' : '') + '><span class="sep">~</span><input type="text" inputmode="decimal" data-dct="' + tk + '|e" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r0 + ',' + (c + 1) + '" value="' + ev + '"' + (off ? ' disabled' : '') + '>' + (warn.length ? '<span class="wi" aria-label="겹침">!</span>' : '') + '</td>';
     };
     const r0 = r;
-    const inp = (k, c, ph, wide) => '<td class="f' + (wide ? ' w' : '') + (k === 'dc1p' || k === 'dc2p' ? ' p' : '') + (k === 'tut' && cls.unreadable ? ' unread' : '') + '"' + (k === 'tut' && cls.unreadable ? ' title="시간을 못 읽었어요. 6:35-8:05 처럼 적으면 겹침 검사가 돼요"' : '') + '><input data-dcf="' + k + '" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r + ',' + c + '" value="' + esc(dc[k] || '') + '"' + (off ? ' disabled' : '') + '>' + (k === 'tut' && cls.unreadable ? '<span class="wi q" aria-label="시간 못 읽음">?</span>' : '') + '</td>';
+    const tutAuto = !dc.tut ? ttTutText(date, st) : '';
+    const inp = (k, c, ph, wide) => { const auto = k === 'tut' && tutAuto; return '<td class="f' + (wide ? ' w' : '') + (k === 'dc1p' || k === 'dc2p' ? ' p' : '') + (k === 'tut' && cls.unreadable ? ' unread' : '') + (auto ? ' auto' : '') + '"' + (k === 'tut' && cls.unreadable ? ' title="시간을 못 읽었어요. 6:35-8:05 처럼 적으면 겹침 검사가 돼요"' : auto ? ' title="시간표 앱에서 가져온 값. 직접 고치면 그게 우선이고, 지우면 다시 시간표 값이 떠요"' : '') + '><input data-dcf="' + k + '" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r + ',' + c + '" value="' + esc(auto ? tutAuto : (dc[k] || '')) + '"' + (off ? ' disabled' : '') + (auto ? ' data-auto="1"' : '') + '>' + (k === 'tut' && cls.unreadable ? '<span class="wi q" aria-label="시간 못 읽음">?</span>' : auto ? '<span class="src">시간표</span>' : '') + '</td>'; };
     const txt = (k, c) => '<td class="issue dcx" data-k="' + st.id + '|' + date + '|dc.' + k + '" data-nav="' + r + ',' + c + '" tabindex="0" data-act="editIssue" data-args="' + st.id + '|' + date + '|dc.' + k + '"><div class="view">' + cellView('dc.' + k, dc[k], st.id, date) + '</div></td>';
     rows += '<tr class="' + (off ? 'off' : '') + '">'
       + '<td class="c1 num">' + (i + 1) + '</td>'
@@ -453,7 +459,7 @@ function vDc() {
   if (clashN || dupN) html += '<div class="banner' + (clashN ? ' err' : '') + '">' + (clashN ? '수업과 겹치는 DC ' + clashN + '건 (빨강)' : '') + (clashN && dupN ? ' · ' : '') + (dupN ? '같은 담당자 같은 시간 ' + dupN + '건 (주황)' : '') + '. 칸 위에 마우스를 올리면 뭐랑 겹치는지 나와요.</div>';
   html += '<div class="board-wrap dc-wrap"><table class="board dc"><thead><tr>' + cols.map((c, i) => '<th class="' + (i === 0 ? 'c1' : i === 1 ? 'c2' : '') + '">' + c + '</th>').join('') + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   html += '<div class="dc-note"><label for="dc-ftr">하단 메모</label><textarea id="dc-ftr" data-dayroot="ftr" data-date="' + date + '" data-live="yes" rows="2">' + esc(doc.ftr || '') + '</textarea></div>';
-  html += '<p class="help" style="margin:8px 2px 0">예전 DC관리 시트와 같은 구성이에요. DC 시간은 8:00처럼 치면 돼요(800, 8시도 됨). 시작만 치면 끝은 15분 뒤로 자동(바꿔도 됨). 개별지도 칸에 6:35-8:05처럼 시간을 적으면(또는 시간표 앱 교시) DC가 그 시간과 겹칠 때 빨강, 같은 담당자가 같은 시간에 두 명이면 주황. 개별지도 시간을 못 읽으면 ?가 떠요. 전달사항·NOTE는 클릭해서 메모. 등원 O를 찍으면 실제 등원 시간이 자동으로 들어가요(오늘만). 등하원 칸은 학생 고정 정보라 한 번 적으면 매일 보여요. 전날 값 채우기는 빈 칸만 채우고 적힌 건 안 건드려요. 화살표·Tab으로 칸 이동, 인쇄는 가로 A4.</p>';
+  html += '<p class="help" style="margin:8px 2px 0">예전 DC관리 시트와 같은 구성이에요. DC 시간은 8:00처럼 치면 돼요(800, 8시도 됨). 시작만 치면 끝은 15분 뒤로 자동(바꿔도 됨). 개별지도 칸은 시간표 앱 배정이 자동으로 들어오고(직접 고치면 그게 우선), DC가 그 시간과 겹치면 빨강, 같은 담당자가 같은 시간에 두 명이면 주황. 개별지도 시간을 못 읽으면 ?가 떠요. 전달사항·NOTE는 클릭해서 메모. 등원 O를 찍으면 실제 등원 시간이 자동으로 들어가요(오늘만). 등하원 칸은 학생 고정 정보라 한 번 적으면 매일 보여요. 전날 값 채우기는 빈 칸만 채우고 적힌 건 안 건드려요. 화살표·Tab으로 칸 이동, 인쇄는 가로 A4.</p>';
   return html;
 }
 
@@ -579,7 +585,8 @@ function shDay(sh) {
   h += '<div class="sheet-b">';
   h += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span class="seg big"><button type="button" class="' + (e.att === 'O' ? 'on' : '') + '" data-act="att" data-args="' + sh.sid + '|O|' + sh.date + '">등원 O</button><button type="button" class="' + (e.att === 'X' ? 'on X' : '') + '" data-act="att" data-args="' + sh.sid + '|X|' + sh.date + '">미등원 X</button></span>' + (e.attBy ? '<span style="font-size:12.5px;color:var(--fg-3)">' + esc(staffName(e.attBy)) + ' <span class="num">' + fmtTime(e.attAt) + '</span></span>' : '') + '</div>';
   if (evs.length) h += '<div>' + evs.map((ev) => '<div class="ev-item"><span><b>' + esc(ev.type) + '</b> ' + esc(ev.text || '') + ' <span class="num">' + fmtMD(ev.from) + (ev.to && ev.to !== ev.from ? '~' + fmtMD(ev.to) : '') + '</span></span><button type="button" class="x" data-act="delEvent" data-args="' + ev.id + '" aria-label="삭제">×</button></div>').join('') + '</div>';
-  const f = e.f || {}; const dc = e.dc || {};
+  const f = e.f || {}; const dc = Object.assign({}, e.dc || {});
+  if (!dc.tut) { const a = ttTutText(sh.date, s); if (a) dc.tut = a; }
   if (DC_FIELDS.some(([k]) => dc[k]) || dc.off) h += '<div class="block"><h3>일정 ' + (dc.off ? '<span class="pill n">OFF</span>' : '') + '</h3><div class="kv">' + DC_FIELDS.filter(([k]) => dc[k]).map(([k, l]) => '<span>' + l + ' <b style="color:var(--fg-2)">' + esc(dc[k]) + '</b></span>').join('') + '</div>' + DC_TEXT.filter(([k]) => dc[k]).map(([k, l]) => '<div class="kv" style="margin-top:4px"><span>' + l + ' <b style="color:var(--fg-2);white-space:pre-wrap">' + esc(dc[k]) + '</b></span></div>').join('') + '</div>';
   h += '<div class="block"><div class="field"><label for="f-drowsy">졸음/전자기기</label><input id="f-drowsy" data-field="drowsy" data-live="yes" value="' + esc(f.drowsy || '') + '" placeholder="예 졸음 2회, 폰 1회"></div></div>';
   const memo = (k, l, ph) => '<div class="block memo-box"><h3>' + l + (e[k + 'By'] ? ' <span style="font-weight:500;color:var(--fg-3)">· ' + esc(staffName(e[k + 'By'])) + ' <span class="num">' + fmtDT(e[k + 'At']) + '</span></span>' : '') + '</h3><textarea id="mi-' + k + '" data-issue="' + k + '" data-sid="' + sh.sid + '" data-date="' + sh.date + '" data-live="yes" placeholder="' + ph + '">' + esc(e[k] || '') + '</textarea><div class="hint">' + (k === 'm' ? '자유 메모. 며칠 이어지는 일은 아래 기간 이슈 등록이 편해요.' : me() ? '새로 쓰면 ' + esc(tag(S.me)) + ' 태그가 자동으로 붙어요. 다른 곳을 누르면 저장.' : '작성자를 먼저 선택하세요.') + '</div></div>';
