@@ -164,8 +164,9 @@ table.dc td.issue.dcx{min-width:150px;max-width:260px}
 table.dc td.issue.dcx .view{font-size:12.5px;min-height:24px}
 table.dc td.issue.dcx textarea{min-width:150px;min-height:50px;font-size:12.5px}
 table.dc td.tm{white-space:nowrap;padding:2px 4px;position:relative}
-table.dc td.tm input[type=time]{width:92px;padding:2px 3px;border:1px solid transparent;border-radius:5px;background:transparent;font-size:12.5px;text-align:center}
-table.dc td.tm input[type=time]:hover,table.dc td.tm input[type=time]:focus{border-color:var(--line-2);background:var(--bg)}
+table.dc td.tm input{width:52px;padding:3px 2px;border:1px solid transparent;border-radius:5px;background:transparent;font-size:12.5px;text-align:center}
+table.dc td.tm input:hover,table.dc td.tm input:focus{border-color:var(--line-2);background:var(--bg)}
+table.dc td.f.p input{width:96px;text-align:center}
 table.dc td.tm .sep{color:var(--fg-3);font-size:12px;margin:0 1px}
 table.dc td.tm.clash{box-shadow:inset 0 0 0 2px var(--danger);background:var(--danger-soft)}
 table.dc td.tm.clash2{box-shadow:inset 0 0 0 2px var(--warn);background:var(--warn-soft)}
@@ -186,7 +187,7 @@ table.dc th.c2,table.dc td.c2{left:34px}
   .board th,.board td{position:static!important;padding:2px 3px;box-shadow:none}
   table.dc td.f input,table.dc td.f textarea{border:0;background:transparent;width:100%;font-size:9.5px;padding:0;min-height:0}
   table.dc td.issue.dcx .view{font-size:9.5px;min-height:0}
-  table.dc td.tm input[type=time]{width:auto;font-size:9.5px}
+  table.dc td.tm input{width:auto;font-size:9.5px}
   .board td.issue .add,.board td.att button{color:inherit}
   .dc-note textarea{border:0;padding:0;font-size:10px;resize:none}
   .evc{border:1px solid var(--warn)}
