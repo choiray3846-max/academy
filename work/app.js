@@ -114,7 +114,7 @@ const evChips = (evs) => evs.map((ev) => '<span class="evc">' + esc(ev.type) + (
 function cellView(field, text, sid, date) {
   const t = (text || '').trim();
   if (field === 'm') { const chips = evChips(activeEvents(date, sid)); return (chips ? '<div class="evs">' + chips + '</div>' : '') + (t ? esc(t) : (chips ? '' : '<span class="add">클릭해서 입력</span>')); }
-  if (field.startsWith('dc.')) return t ? esc(t) : '<span class="add">·</span>';
+  if (field.startsWith('dc.')) return t ? esc(t) : '';
   return t ? colorize(t) : '<span class="add">클릭해서 입력</span>';
 }
 function allEntries() { const out = []; Object.values(days()).forEach((d) => { Object.entries(d.s || {}).forEach(([sid, e]) => { if (hasIssue(e)) out.push(Object.assign({ date: d.date, sid }, e)); }); }); return out.sort((a, b) => (b.date + entryAt(b)).localeCompare(a.date + entryAt(a))); }
@@ -255,15 +255,25 @@ function saveIssue(date, sid, field, val) {
 function saveDc(date, sid, key, val) { if (!needMe()) return; const dc = Object.assign({}, dayEntry(date, sid).dc || {}); if ((dc[key] || '') === val) return; dc[key] = val; W.patchEntry(date, sid, 'dc', dc, S.me); }
 /* 시간 해석: 학원 시계(1~10시는 오후, 11·12시는 그대로, 13시 이상은 24시간제) */
 const hm = (m) => pad(Math.floor(m / 60)) + ':' + pad(m % 60);
-function parseAcademy(str) { const m = /^(\d{1,2})(?::(\d{2}))?\s*시?$/.exec(String(str).trim()); if (!m) return null; let h = Number(m[1]); const mi = Number(m[2] || 0); if (h >= 1 && h <= 10) h += 12; return h * 60 + mi; }
-function rangesIn(text) { const out = []; const re = /(\d{1,2}(?::\d{2})?)\s*시?\s*[-~–]\s*(\d{1,2}(?::\d{2})?)\s*시?/g; let m; while ((m = re.exec(String(text || '')))) { const a = parseAcademy(m[1]), b = parseAcademy(m[2]); if (a != null && b != null && b > a) out.push([a, b, m[0]]); } return out; }
+const T_ONE = '(?:오전|오후|am|pm|AM|PM)?\\s*\\d{1,2}\\s*(?::\\s*\\d{1,2}|시\\s*(?:반|\\d{1,2}\\s*분?)?)?\\s*(?:분)?';
+function parseAcademy(str) {
+  let t = String(str == null ? '' : str).trim(); if (!t) return null;
+  let ap = ''; t = t.replace(/^(오전|am|AM)\s*/, () => { ap = 'am'; return ''; }).replace(/^(오후|pm|PM)\s*/, () => { ap = 'pm'; return ''; });
+  const m = /^(\d{1,2})\s*(?::\s*(\d{1,2})|시\s*(반|\d{1,2})?\s*분?)?\s*$/.exec(t); if (!m) return null;
+  let h = Number(m[1]); let mi = m[2] != null ? Number(m[2]) : m[3] === '반' ? 30 : m[3] != null ? Number(m[3]) : 0;
+  if (h > 24 || mi > 59) return null;
+  if (ap === 'pm') { if (h < 12) h += 12; } else if (ap === 'am') { if (h === 12) h = 0; } else if (h >= 1 && h <= 10) h += 12;
+  return h * 60 + mi;
+}
+const DASH = '[-~–—～〜]';
+function rangesIn(text) { const out = []; const re = new RegExp('(' + T_ONE + ')\\s*' + DASH + '\\s*(' + T_ONE + ')', 'g'); let m; const src = String(text || ''); while ((m = re.exec(src))) { const a = parseAcademy(m[1]), b = parseAcademy(m[2]); if (a != null && b != null && b > a) out.push([a, b, m[0].trim()]); } return out; }
 function parse24(str) { const m = /^(\d{1,2}):(\d{2})$/.exec(String(str || '').trim()); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
 /** DC 시간 문자열 → {s,e} (분). 24시간제('20:00-20:15')와 옛 표기('8:00-8:15') 둘 다 */
-function dcRange(str) { if (!str) return null; const parts = String(str).split(/\s*[-~–]\s*/); const a = parse24(parts[0]) != null && /^\d{2}:\d{2}$/.test(parts[0].trim()) ? parse24(parts[0]) : parseAcademy(parts[0]); const b = parts[1] ? (/^\d{2}:\d{2}$/.test(parts[1].trim()) ? parse24(parts[1]) : parseAcademy(parts[1])) : null; if (a == null) return null; return { s: a, e: b != null && b > a ? b : a + 15 }; }
+function dcRange(str) { if (!str) return null; const parts = String(str).split(/\s*[-~–—～〜]\s*/); const a = parse24(parts[0]) != null && /^\d{2}:\d{2}$/.test(parts[0].trim()) ? parse24(parts[0]) : parseAcademy(parts[0]); const b = parts[1] ? (/^\d{2}:\d{2}$/.test(parts[1].trim()) ? parse24(parts[1]) : parseAcademy(parts[1])) : null; if (a == null) return null; return { s: a, e: b != null && b > a ? b : a + 15 }; }
 /** 그 학생의 그날 수업 구간: 개별지도 칸 + 시간표 교시 */
 function classRanges(date, st, dc) {
   const out = []; const tut = (dc && dc.tut) || '';
-  if (tut && !/수업\s*X/i.test(tut)) rangesIn(tut).forEach(([a, b, t]) => out.push({ s: a, e: b, label: '개별지도 ' + tut.trim() }));
+  if (tut && !/수업\s*X/i.test(tut)) { const rs = rangesIn(tut); rs.forEach(([a, b, t]) => out.push({ s: a, e: b, label: '개별지도 ' + t })); if (!rs.length) out.unreadable = true; }
   const ss = ttSessions(date, st) || []; ss.forEach((x) => rangesIn(x.time).forEach(([a, b]) => out.push({ s: a, e: b, label: '시간표 ' + x.block + ' ' + (x.subject || '') + (x.time ? ' ' + x.time : '') })));
   return out;
 }
@@ -410,12 +420,11 @@ function vDc() {
   studsAll.forEach((st) => { const dc = dayEntry(date, st.id).dc || {}; if (dc.off) return; [['dc1t', 'dc1p'], ['dc2t', 'dc2p']].forEach(([tk, pk]) => { const r = dcRange(dc[tk]); const who = personKey(dc[pk]); if (r && who) (byPerson[who] = byPerson[who] || []).push({ sid: st.id, name: st.name, key: tk, r }); }); });
   let clashN = 0, dupN = 0;
   // 상단 안내 / 하단 직원 일정 메모 (하루 단위)
-  html += '<div class="dc-note"><textarea id="dc-hdr" data-dayroot="hdr" data-date="' + date + '" data-live="yes" rows="1" placeholder="상단 안내 (예 ☆ 등원하면 리뷰노트 작성하고 SC 때 가져오기)">' + esc(doc.hdr || '') + '</textarea></div>';
+  html += '<div class="dc-note"><label for="dc-hdr">상단 안내</label><textarea id="dc-hdr" data-dayroot="hdr" data-date="' + date + '" data-live="yes" rows="1">' + esc(doc.hdr || '') + '</textarea></div>';
   const cols = ['No', '학생', '학교', '학년', '등원<br>약속', '하원<br>예정', 'SC', '실제<br>등원', '등원', '1차 DC<br>시간', '1차 DC<br>담당', '2차 DC<br>시간', '2차 DC<br>담당', '개별지도', '등하원', '매니저 → DC담당자', 'DC담당자 → 매니저', 'NOTE', '수행평가', 'OFF'];
   let rows = '';
   studs.forEach((st, i) => {
     const e = dayEntry(date, st.id); const dc = e.dc || {}; const off = !!dc.off; const r = i;
-    const ss = tt ? ttSessions(date, st) : null; const ttHint = ss && ss.length ? ss.map((x) => (x.time ? x.time + ' ' : x.block + ' ') + x.subject).join(', ') : '';
     const cls = classRanges(date, st, dc);
     const tcell = (tk, pk, c) => {
       const r = dcRange(dc[tk]); const warn = []; let kind = '';
@@ -423,10 +432,10 @@ function vDc() {
         const who = personKey(dc[pk]); if (who) (byPerson[who] || []).forEach((o) => { if (o.sid !== st.id && overlap(r, o.r)) { warn.push(who + ' 같은 시간에 ' + o.name); if (!kind) kind = 'clash2'; } }); }
       if (kind === 'clash') clashN++; else if (kind === 'clash2') dupN++;
       const sv = r ? dispAcademy(r.s) : '', ev = r ? dispAcademy(r.e) : '';
-      return '<td class="f tm ' + kind + '" title="' + esc(warn.join(' / ')) + '"><input type="text" inputmode="decimal" placeholder="8:00" data-dct="' + tk + '|s" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r0 + ',' + c + '" value="' + sv + '"' + (off ? ' disabled' : '') + '><span class="sep">~</span><input type="text" inputmode="decimal" placeholder="8:15" data-dct="' + tk + '|e" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r0 + ',' + (c + 1) + '" value="' + ev + '"' + (off ? ' disabled' : '') + '>' + (warn.length ? '<span class="wi" aria-label="겹침">!</span>' : '') + '</td>';
+      return '<td class="f tm ' + kind + '" title="' + esc(warn.join(' / ')) + '"><input type="text" inputmode="decimal" data-dct="' + tk + '|s" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r0 + ',' + c + '" value="' + sv + '"' + (off ? ' disabled' : '') + '><span class="sep">~</span><input type="text" inputmode="decimal" data-dct="' + tk + '|e" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r0 + ',' + (c + 1) + '" value="' + ev + '"' + (off ? ' disabled' : '') + '>' + (warn.length ? '<span class="wi" aria-label="겹침">!</span>' : '') + '</td>';
     };
     const r0 = r;
-    const inp = (k, c, ph, wide) => '<td class="f' + (wide ? ' w' : '') + (k === 'dc1p' || k === 'dc2p' ? ' p' : '') + '"><input data-dcf="' + k + '" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r + ',' + c + '" value="' + esc(dc[k] || '') + '" placeholder="' + esc(ph || '') + '"' + (off ? ' disabled' : '') + '></td>';
+    const inp = (k, c, ph, wide) => '<td class="f' + (wide ? ' w' : '') + (k === 'dc1p' || k === 'dc2p' ? ' p' : '') + (k === 'tut' && cls.unreadable ? ' unread' : '') + '"' + (k === 'tut' && cls.unreadable ? ' title="시간을 못 읽었어요. 6:35-8:05 처럼 적으면 겹침 검사가 돼요"' : '') + '><input data-dcf="' + k + '" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r + ',' + c + '" value="' + esc(dc[k] || '') + '"' + (off ? ' disabled' : '') + '>' + (k === 'tut' && cls.unreadable ? '<span class="wi q" aria-label="시간 못 읽음">?</span>' : '') + '</td>';
     const txt = (k, c) => '<td class="issue dcx" data-k="' + st.id + '|' + date + '|dc.' + k + '" data-nav="' + r + ',' + c + '" tabindex="0" data-act="editIssue" data-args="' + st.id + '|' + date + '|dc.' + k + '"><div class="view">' + cellView('dc.' + k, dc[k], st.id, date) + '</div></td>';
     rows += '<tr class="' + (off ? 'off' : '') + '">'
       + '<td class="c1 num">' + (i + 1) + '</td>'
@@ -435,16 +444,16 @@ function vDc() {
       + inp('arr', 0, '') + inp('dep', 1, '') + inp('sc', 2, '') + inp('act', 3, '')
       + '<td class="att"><button type="button" class="' + (e.att || '') + '" data-nav="' + r + ',4" data-act="attCycle" data-args="' + st.id + '|' + date + '"' + (off ? ' disabled' : '') + '>' + (e.att || '–') + '</button></td>'
       + tcell('dc1t', 'dc1p', 5) + inp('dc1p', 7, '') + tcell('dc2t', 'dc2p', 8) + inp('dc2p', 10, '')
-      + inp('tut', 11, ttHint || '수업X', true)
-      + '<td class="f w"><textarea data-sched="' + st.id + '" data-nav="' + r + ',12" rows="2" placeholder="예 월수금 4:30 등원, 토 11-2시">' + esc(st.sched || st.days || '') + '</textarea></td>'
+      + inp('tut', 11, '', true)
+      + '<td class="f w"><textarea data-sched="' + st.id + '" data-nav="' + r + ',12" rows="2">' + esc(st.sched || st.days || '') + '</textarea></td>'
       + txt('toDc', 13) + txt('fromDc', 14) + txt('note', 15) + txt('perf', 16)
       + '<td class="offc"><button type="button" class="ck ' + (off ? 'on' : '') + '" data-act="dcOff" data-args="' + st.id + '|' + date + '">' + (off ? 'OFF' : '–') + '</button></td>'
       + '</tr>';
   });
   if (clashN || dupN) html += '<div class="banner' + (clashN ? ' err' : '') + '">' + (clashN ? '수업과 겹치는 DC ' + clashN + '건 (빨강)' : '') + (clashN && dupN ? ' · ' : '') + (dupN ? '같은 담당자 같은 시간 ' + dupN + '건 (주황)' : '') + '. 칸 위에 마우스를 올리면 뭐랑 겹치는지 나와요.</div>';
   html += '<div class="board-wrap dc-wrap"><table class="board dc"><thead><tr>' + cols.map((c, i) => '<th class="' + (i === 0 ? 'c1' : i === 1 ? 'c2' : '') + '">' + c + '</th>').join('') + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-  html += '<div class="dc-note"><textarea id="dc-ftr" data-dayroot="ftr" data-date="' + date + '" data-live="yes" rows="2" placeholder="하단 메모 (예 2:30-3:30 매니저 점심시간 / 연주T 7:30-9:30 DC / 규림T 8:00-10:00 DC)">' + esc(doc.ftr || '') + '</textarea></div>';
-  html += '<p class="help" style="margin:8px 2px 0">예전 DC관리 시트와 같은 구성이에요. DC 시간은 8:00처럼 치면 돼요(800, 8시도 됨). 시작만 치면 끝은 15분 뒤로 자동(바꿔도 됨). 그 학생의 개별지도·시간표 교시와 겹치면 빨강, 같은 담당자가 같은 시간에 두 명이면 주황. 전달사항·NOTE는 클릭해서 메모. 등원 O를 찍으면 실제 등원 시간이 자동으로 들어가요(오늘만). 등하원 칸은 학생 고정 정보라 한 번 적으면 매일 보여요. 전날 값 채우기는 빈 칸만 채우고 적힌 건 안 건드려요. 화살표·Tab으로 칸 이동, 인쇄는 가로 A4.</p>';
+  html += '<div class="dc-note"><label for="dc-ftr">하단 메모</label><textarea id="dc-ftr" data-dayroot="ftr" data-date="' + date + '" data-live="yes" rows="2">' + esc(doc.ftr || '') + '</textarea></div>';
+  html += '<p class="help" style="margin:8px 2px 0">예전 DC관리 시트와 같은 구성이에요. DC 시간은 8:00처럼 치면 돼요(800, 8시도 됨). 시작만 치면 끝은 15분 뒤로 자동(바꿔도 됨). 개별지도 칸에 6:35-8:05처럼 시간을 적으면(또는 시간표 앱 교시) DC가 그 시간과 겹칠 때 빨강, 같은 담당자가 같은 시간에 두 명이면 주황. 개별지도 시간을 못 읽으면 ?가 떠요. 전달사항·NOTE는 클릭해서 메모. 등원 O를 찍으면 실제 등원 시간이 자동으로 들어가요(오늘만). 등하원 칸은 학생 고정 정보라 한 번 적으면 매일 보여요. 전날 값 채우기는 빈 칸만 채우고 적힌 건 안 건드려요. 화살표·Tab으로 칸 이동, 인쇄는 가로 A4.</p>';
   return html;
 }
 
