@@ -80,10 +80,10 @@ function ttReport(ws, s) {
 const ATT_LABEL = { excellent: '우수', good: '양호', normal: '보통', poor: '미흡' };
 
 // ---------- state ----------
-const VIEWS = ['board', 'today', 'students', 'issues', 'requests', 'calendar', 'setup'];
+const VIEWS = ['board', 'dc', 'today', 'students', 'issues', 'requests', 'calendar', 'setup'];
 const S = { staff: {}, students: {}, events: {}, requests: {},
   me: ls.get('academy-work/me') || '', view: (location.hash || '#board').slice(1), date: todayKey(), month: todayKey().slice(0, 7),
-  sheet: null, range: 1, q: '', feedType: '', reqShowDone: false, stuShowInactive: false, mgrFilter: '', calSel: '' };
+  sheet: null, range: 1, q: '', dcMgr: null, feedType: '', reqShowDone: false, stuShowInactive: false, mgrFilter: '', calSel: '' };
 if (!VIEWS.includes(S.view)) S.view = 'board';
 function refresh() { S.staff = W.live('staff'); S.students = W.live('students'); S.events = W.live('events'); S.requests = W.live('requests'); }
 const days = () => W.days;
@@ -96,6 +96,9 @@ const tag = (id) => { const s = S.staff[id]; if (!s) return '[?]'; return s.role
 const studentsActive = () => Object.values(S.students).filter((s) => s.active !== false);
 const studentSort = (a, b) => gradeRank(b.grade) - gradeRank(a.grade) || a.name.localeCompare(b.name, 'ko');
 const dayEntry = (date, sid) => W.entry(date, sid);
+const getF = (e, field) => (field.startsWith('dc.') ? ((e.dc || {})[field.slice(3)] || '') : (e[field] || ''));
+const DC_FIELDS = [['arr', '등원 약속'], ['dep', '하원 예정'], ['sc', 'SC 시간'], ['act', '실제 등원'], ['dc1t', '1차 DC 시간'], ['dc1p', '1차 DC 담당'], ['dc2t', '2차 DC 시간'], ['dc2p', '2차 DC 담당'], ['tut', '개별지도']];
+const DC_TEXT = [['toDc', '매니저 → DC담당자'], ['fromDc', 'DC담당자 → 매니저'], ['note', 'NOTE'], ['perf', '수행평가']];
 const activeEvents = (date, sid) => Object.values(S.events).filter((e) => (!sid || e.sid === sid) && e.from <= date && (e.to || e.from) >= date).sort((a, b) => a.from.localeCompare(b.from));
 const me = () => S.staff[S.me] || null;
 const roleOfTag = (t) => { const u = t.toUpperCase(); if (u.endsWith('CM')) return 'CM'; if (u === 'TM') return 'TM'; if (t.includes('원장')) return '원장'; if (t.includes('코디')) return '코디'; if (t.includes('인폼')) return '특급인폼'; return ''; };
@@ -111,6 +114,7 @@ const evChips = (evs) => evs.map((ev) => '<span class="evc">' + esc(ev.type) + (
 function cellView(field, text, sid, date) {
   const t = (text || '').trim();
   if (field === 'm') { const chips = evChips(activeEvents(date, sid)); return (chips ? '<div class="evs">' + chips + '</div>' : '') + (t ? esc(t) : (chips ? '' : '<span class="add">클릭해서 입력</span>')); }
+  if (field.startsWith('dc.')) return t ? esc(t) : '<span class="add">·</span>';
   return t ? colorize(t) : '<span class="add">클릭해서 입력</span>';
 }
 function allEntries() { const out = []; Object.values(days()).forEach((d) => { Object.entries(d.s || {}).forEach(([sid, e]) => { if (hasIssue(e)) out.push(Object.assign({ date: d.date, sid }, e)); }); }); return out.sort((a, b) => (b.date + entryAt(b)).localeCompare(a.date + entryAt(a))); }
@@ -123,13 +127,30 @@ const A = {
   nav(v) { S.view = v; location.hash = v; S.sheet = null; render(); window.scrollTo(0, 0); },
   day(n) { S.date = n === 't' ? todayKey() : shiftK(S.date, Number(n)); render(); },
   month(n) { if (n === 't') { S.month = todayKey().slice(0, 7); S.calSel = todayKey(); } else { const d = parseKey(S.month + '-01'); d.setMonth(d.getMonth() + Number(n)); S.month = key(d).slice(0, 7); } render(); },
-  att(sid, val, date) { if (!needMe()) return; date = date || S.date; const cur = dayEntry(date, sid).att || ''; W.patchEntry(date, sid, 'att', cur === val ? '' : val, S.me); },
-  attCycle(sid, date) { if (!needMe()) return; const cur = dayEntry(date, sid).att || ''; W.patchEntry(date, sid, 'att', cur === '' ? 'O' : cur === 'O' ? 'X' : '', S.me); },
+  att(sid, val, date) { if (!needMe()) return; date = date || S.date; const cur = dayEntry(date, sid).att || ''; const nv = cur === val ? '' : val; W.patchEntry(date, sid, 'att', nv, S.me); if (nv === 'O' && date === todayKey() && !getF(dayEntry(date, sid), 'dc.act')) saveDc(date, sid, 'act', nowHM()); },
+  attCycle(sid, date) { if (!needMe()) return; const cur = dayEntry(date, sid).att || ''; const nv = cur === '' ? 'O' : cur === 'O' ? 'X' : ''; W.patchEntry(date, sid, 'att', nv, S.me); if (nv === 'O' && date === todayKey() && !getF(dayEntry(date, sid), 'dc.act')) saveDc(date, sid, 'act', nowHM()); },
+  dcOff(sid, date) { if (!needMe()) return; const dc = Object.assign({}, dayEntry(date, sid).dc || {}); dc.off = !dc.off; W.patchEntry(date, sid, 'dc', dc, S.me); },
+  dcMgr(id) { S.dcMgr = S.dcMgr === id ? '' : id; render(); },
+  dcCopy() {
+    if (!needMe()) return; const date = S.date; let n = 0;
+    const prevDates = Object.keys(days()).filter((d) => d < date && d >= shiftK(date, -14)).sort().reverse();
+    studentsActive().forEach((st) => {
+      const cur = Object.assign({}, dayEntry(date, st.id).dc || {}); let changed = false;
+      for (const d of prevDates) { const pe = dayEntry(d, st.id); if (!pe.dc || pe.dc.off) continue;
+        ['arr', 'dep', 'sc', 'dc1t', 'dc1p', 'dc2t', 'dc2p', 'tut', 'note', 'perf'].forEach((k) => { if (!cur[k] && pe.dc[k]) { cur[k] = pe.dc[k]; changed = true; } });
+        break; }
+      if (changed) { W.patchEntry(date, st.id, 'dc', cur, S.me); n++; }
+    });
+    const doc = days()[date] || {};
+    for (const d of prevDates) { const pd = days()[d]; if (!pd) continue; if (!doc.hdr && pd.hdr) { W.patchDay(date, 'hdr', pd.hdr, S.me); } if (!doc.ftr && pd.ftr) { W.patchDay(date, 'ftr', pd.ftr, S.me); } if (pd.hdr || pd.ftr) break; }
+    toast(n ? n + '명 값을 전날 기록에서 채웠어요' : '채울 값이 없어요 (이미 입력됐거나 전날 기록이 없음)');
+  },
+  print() { window.print(); },
   editIssue(sid, date, field, ev) {
     const td = (ev && ev.target.closest('td.issue')) || document.querySelector('td.issue[data-k="' + sid + '|' + date + '|' + field + '"]');
     if (!td || td.querySelector('textarea')) return;
     td.removeAttribute('tabindex');
-    const raw = dayEntry(date, sid)[field] || '';
+    const raw = getF(dayEntry(date, sid), field);
     td.innerHTML = '<textarea class="cell-edit" id="ce-' + sid + '-' + date + '-' + field + '" data-issue="' + field + '" data-sid="' + sid + '" data-date="' + date + '"></textarea>';
     const ta = td.firstChild; ta.value = raw; ta.focus(); ta.setSelectionRange(raw.length, raw.length);
   },
@@ -183,6 +204,9 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('change', (e) => {
   const t = e.target.closest('[data-issue]'); if (t) { saveIssue(t.dataset.date, t.dataset.sid, t.dataset.issue, t.value); return; }
+  const dc = e.target.closest('[data-dcf]'); if (dc) { saveDc(dc.dataset.date, dc.dataset.sid, dc.dataset.dcf, dc.value.trim()); return; }
+  const sc = e.target.closest('[data-sched]'); if (sc) { const st = S.students[sc.dataset.sched]; if (st && (st.sched || '') !== sc.value.trim()) W.upsert('students', st.id, { sched: sc.value.trim() }); return; }
+  const dr = e.target.closest('[data-dayroot]'); if (dr) { if (!needMe()) return; const cur = (days()[dr.dataset.date] || {})[dr.dataset.dayroot] || ''; if (cur !== dr.value.trim()) W.patchDay(dr.dataset.date, dr.dataset.dayroot, dr.value.trim(), S.me); return; }
   const f = e.target.closest('[data-field]'); if (!f) return;
   if (f.dataset.date && f.dataset.sid) { saveField(f.dataset.date, f.dataset.sid, f.dataset.field, f.value.trim()); return; }
   if (!S.sheet || S.sheet.kind !== 'sday') return;
@@ -213,10 +237,16 @@ document.addEventListener('focusin', (e) => { const td = e.target; if (td.tagNam
 document.addEventListener('focusout', (e) => {
   const ta = e.target; if (!ta.classList || !ta.classList.contains('cell-edit')) return;
   const td = ta.closest('td.issue'); if (!td) return;
-  const fld = ta.dataset.issue; const cur = dayEntry(ta.dataset.date, ta.dataset.sid)[fld] || ''; const merged = fld === 'm' ? ta.value.replace(/\s+$/, '') : (withTag(cur, ta.value) || cur);
+  const fld = ta.dataset.issue; const cur = getF(dayEntry(ta.dataset.date, ta.dataset.sid), fld); const merged = (fld === 'm' || fld.startsWith('dc.')) ? ta.value.replace(/\s+$/, '') : (withTag(cur, ta.value) || cur);
   setTimeout(() => { if (td.querySelector('textarea') === ta && document.activeElement !== ta) { td.setAttribute('tabindex', '0'); td.innerHTML = '<div class="view">' + cellView(fld, merged, ta.dataset.sid, ta.dataset.date) + '</div>'; } }, 0);
 });
-function saveIssue(date, sid, field, val) { if (!needMe()) return; const cur = dayEntry(date, sid)[field] || ''; const merged = field === 'm' ? val.replace(/\s+$/, '') : withTag(cur, val); if (merged === cur.replace(/\s+$/, '')) return; W.patchEntry(date, sid, field, merged, S.me); }
+function saveIssue(date, sid, field, val) {
+  if (!needMe()) return;
+  if (field.startsWith('dc.')) { saveDc(date, sid, field.slice(3), val.replace(/\s+$/, '')); return; }
+  const cur = dayEntry(date, sid)[field] || ''; const merged = field === 'm' ? val.replace(/\s+$/, '') : withTag(cur, val); if (merged === cur.replace(/\s+$/, '')) return; W.patchEntry(date, sid, field, merged, S.me);
+}
+function saveDc(date, sid, key, val) { if (!needMe()) return; const dc = Object.assign({}, dayEntry(date, sid).dc || {}); if ((dc[key] || '') === val) return; dc[key] = val; W.patchEntry(date, sid, 'dc', dc, S.me); }
+const nowHM = () => { const d = new Date(); return d.getHours() + ':' + pad(d.getMinutes()); };
 function saveField(date, sid, field, val) { if (!needMe()) return; const cur = dayEntry(date, sid); const f = Object.assign({}, cur.f || {}); if ((f[field] || '') === val) return; f[field] = val; W.patchEntry(date, sid, 'f', f, S.me); }
 
 // ---------- toast ----------
@@ -231,13 +261,14 @@ function draw() {
   refresh();
   const app = $('#app'); const v = S.view;
   const ae = document.activeElement; const navEl = ae && app.contains(ae) && ae.closest ? ae.closest('[data-nav]') : null; const keep = navEl ? { nav: navEl.dataset.nav, ta: ae.tagName === 'TEXTAREA' } : null;
-  app.classList.toggle('wide', v === 'board');
-  app.innerHTML = (v === 'today' ? vToday() : v === 'board' ? vBoard() : v === 'students' ? vStudents() : v === 'issues' ? vIssues() : v === 'requests' ? vRequests() : v === 'calendar' ? vCalendar() : vSetup()) + nav();
+  app.classList.toggle('wide', v === 'board' || v === 'dc');
+  app.innerHTML = (v === 'today' ? vToday() : v === 'board' ? vBoard() : v === 'dc' ? vDc() : v === 'students' ? vStudents() : v === 'issues' ? vIssues() : v === 'requests' ? vRequests() : v === 'calendar' ? vCalendar() : vSetup()) + nav();
   if (keep) { const t = app.querySelector('[data-nav="' + keep.nav + '"]'); if (t) { if (t.classList.contains('issue')) { if (keep.ta) focusCell(t); } else t.focus(); } }
   drawLayer();
 }
 const ICONS = {
   board: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/></svg>',
+  dc: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
   today: '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="19" cy="18" r="2"/></svg>',
   students: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.5c3 0 5.5 2 5.5 5"/></svg>',
   issues: '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12.5h5"/></svg>',
@@ -247,7 +278,7 @@ const ICONS = {
 };
 function nav() {
   const n = openReqs().length;
-  const items = [['board', '표'], ['today', '오늘'], ['students', '학생'], ['issues', '이슈'], ['requests', '요청'], ['calendar', '달력'], ['setup', '설정']];
+  const items = [['board', '표'], ['dc', '일정'], ['today', '오늘'], ['students', '학생'], ['issues', '이슈'], ['requests', '요청'], ['calendar', '달력'], ['setup', '설정']];
   return '<nav class="nav" aria-label="메뉴"><div class="nav-in">' + items.map(([k, l]) => '<button type="button" class="' + (S.view === k ? 'on' : '') + '" data-act="nav" data-args="' + k + '" aria-current="' + (S.view === k ? 'page' : 'false') + '">' + ICONS[k] + '<span>' + l + '</span>' + (k === 'requests' && n ? '<span class="badge num">' + n + '</span>' : '') + '</button>').join('') + '</div></nav>';
 }
 function syncChip() {
@@ -328,6 +359,49 @@ function vBoard() {
   if (tt0 && (tt0.closed || tt0.note)) html += '<div class="banner">시간표: ' + esc(tt0.note || '휴원') + (tt0.closed ? ' (휴원)' : '') + '</div>';
   html += '<div class="board-wrap"><table class="board"><thead><tr>' + th + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   html += '<p class="help" style="margin:8px 2px 0">등원 칸은 누를 때마다 O → X → 빈칸. 졸음/전자기기와 이슈 칸은 클릭해서 바로 쓰면 다른 칸으로 넘어갈 때 저장돼요. 새로 쓰기 시작하면 작성자 태그([이CM] 같은)가 자동으로 붙어요. 화살표 키로 옆 칸·다른 학생 칸으로 이동(글이 있는 칸에선 Ctrl+화살표), Tab도 돼요. 이슈·메모 칸에선 Ctrl+Enter로 아래 학생. 메모 칸은 태그 없이 자유롭게. 이름을 누르면 상세 창.</p>';
+  return html;
+}
+
+// ---- 일정 (하루 시간표, DC관리 시트) ----
+function vDc() {
+  const date = S.date; const doc = days()[date] || {};
+  let html = header('일정', '하루 시간표 · DC 관리');
+  html += '<div class="daybar" style="flex-wrap:wrap"><button type="button" class="icon-btn" data-act="day" data-args="-1" aria-label="전날">‹</button><div class="d num">' + fmtK(date) + '</div><button type="button" class="icon-btn" data-act="day" data-args="1" aria-label="다음날">›</button>' + (date === todayKey() ? '<span class="today">오늘</span>' : '<button type="button" class="btn sm ghost" data-act="day" data-args="t">오늘로</button>') + '<span class="spacer"></span><button type="button" class="btn sm" data-act="dcCopy" title="등원 약속·하원·DC 시간·담당·개별지도·NOTE를 가장 최근 기록에서 빈 칸에만 채웁니다">전날 값 채우기</button><button type="button" class="btn sm" data-act="print">인쇄</button></div>';
+  const studsAll = studentsActive();
+  if (!studsAll.length) return html + '<div class="section">' + noStudents() + '</div>';
+  if (S.dcMgr === null) S.dcMgr = (me() && me().role === 'CM' && studsAll.some((x) => x.manager === S.me)) ? S.me : '';
+  const mgrs = Object.values(S.staff).sort((a, b) => (a.order || 0) - (b.order || 0)).filter((m) => studsAll.some((x) => x.manager === m.id));
+  html += '<div class="filters" style="margin-top:6px"><button type="button" class="pill ' + (!S.dcMgr ? 'on' : '') + '" data-act="dcMgr" data-args="">전체</button>' + mgrs.map((m) => '<button type="button" class="pill ' + (S.dcMgr === m.id ? 'on' : '') + '" data-act="dcMgr" data-args="' + m.id + '">' + esc(m.name) + '</button>').join('') + '</div>';
+  const studs = studsAll.filter((x) => !S.dcMgr || x.manager === S.dcMgr).sort(studentSort);
+  const tt = ttFor(date);
+  // 상단 안내 / 하단 직원 일정 메모 (하루 단위)
+  html += '<div class="dc-note"><textarea id="dc-hdr" data-dayroot="hdr" data-date="' + date + '" data-live="yes" rows="1" placeholder="상단 안내 (예 ☆ 등원하면 리뷰노트 작성하고 SC 때 가져오기)">' + esc(doc.hdr || '') + '</textarea></div>';
+  const cols = ['No', '학생', '학교', '학년', '등원<br>약속', '하원<br>예정', 'SC', '실제<br>등원', '등원', '1차 DC<br>시간', '1차 DC<br>담당', '2차 DC<br>시간', '2차 DC<br>담당', '개별지도', '등하원', '매니저 → DC담당자', 'DC담당자 → 매니저', 'NOTE', '수행평가', 'OFF'];
+  let rows = '';
+  const dl = new Set(); Object.values(days()).forEach((d) => Object.values(d.s || {}).forEach((e) => { if (e.dc) { if (e.dc.dc1p) dl.add(e.dc.dc1p); if (e.dc.dc2p) dl.add(e.dc.dc2p); } }));
+  staffList().forEach((m) => dl.add(m.name));
+  studs.forEach((st, i) => {
+    const e = dayEntry(date, st.id); const dc = e.dc || {}; const off = !!dc.off; const r = i;
+    const ss = tt ? ttSessions(date, st) : null; const ttHint = ss && ss.length ? ss.map((x) => (x.time ? x.time + ' ' : x.block + ' ') + x.subject).join(', ') : '';
+    const inp = (k, c, ph, wide) => '<td class="f' + (wide ? ' w' : '') + '"><input data-dcf="' + k + '" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r + ',' + c + '" value="' + esc(dc[k] || '') + '" placeholder="' + esc(ph || '') + '"' + (off ? ' disabled' : '') + (k === 'dc1p' || k === 'dc2p' ? ' list="dc-people"' : '') + '></td>';
+    const txt = (k, c) => '<td class="issue dcx" data-k="' + st.id + '|' + date + '|dc.' + k + '" data-nav="' + r + ',' + c + '" tabindex="0" data-act="editIssue" data-args="' + st.id + '|' + date + '|dc.' + k + '"><div class="view">' + cellView('dc.' + k, dc[k], st.id, date) + '</div></td>';
+    rows += '<tr class="' + (off ? 'off' : '') + '">'
+      + '<td class="c1 num">' + (i + 1) + '</td>'
+      + '<td class="c2 name ' + (st.status ? 'st-' + st.status : '') + '" data-act="openDay" data-args="' + st.id + '|' + date + '">' + esc(st.name) + '</td>'
+      + '<td class="sm">' + esc(st.school || '') + '</td><td class="sm">' + esc(st.grade || '') + '</td>'
+      + inp('arr', 0, '') + inp('dep', 1, '') + inp('sc', 2, '') + inp('act', 3, '')
+      + '<td class="att"><button type="button" class="' + (e.att || '') + '" data-nav="' + r + ',4" data-act="attCycle" data-args="' + st.id + '|' + date + '"' + (off ? ' disabled' : '') + '>' + (e.att || '–') + '</button></td>'
+      + inp('dc1t', 5, '') + inp('dc1p', 6, '') + inp('dc2t', 7, '') + inp('dc2p', 8, '')
+      + inp('tut', 9, ttHint || '수업X', true)
+      + '<td class="f w"><textarea data-sched="' + st.id + '" data-nav="' + r + ',10" rows="2" placeholder="예 월수금 4:30 등원, 토 11-2시">' + esc(st.sched || st.days || '') + '</textarea></td>'
+      + txt('toDc', 11) + txt('fromDc', 12) + txt('note', 13) + txt('perf', 14)
+      + '<td class="offc"><button type="button" class="ck ' + (off ? 'on' : '') + '" data-act="dcOff" data-args="' + st.id + '|' + date + '">' + (off ? 'OFF' : '–') + '</button></td>'
+      + '</tr>';
+  });
+  html += '<div class="board-wrap dc-wrap"><table class="board dc"><thead><tr>' + cols.map((c, i) => '<th class="' + (i === 0 ? 'c1' : i === 1 ? 'c2' : '') + '">' + c + '</th>').join('') + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  html += '<datalist id="dc-people">' + [...dl].map((x) => '<option value="' + esc(x) + '">').join('') + '</datalist>';
+  html += '<div class="dc-note"><textarea id="dc-ftr" data-dayroot="ftr" data-date="' + date + '" data-live="yes" rows="2" placeholder="하단 메모 (예 2:30-3:30 매니저 점심시간 / 연주T 7:30-9:30 DC / 규림T 8:00-10:00 DC)">' + esc(doc.ftr || '') + '</textarea></div>';
+  html += '<p class="help" style="margin:8px 2px 0">예전 DC관리 시트와 같은 구성이에요. 시간 칸은 바로 타이핑, 전달사항·NOTE는 클릭해서 메모. 등원 O를 찍으면 실제 등원 시간이 자동으로 들어가요(오늘만). 등하원 칸은 학생 고정 정보라 한 번 적으면 매일 보여요. 전날 값 채우기는 빈 칸만 채우고 적힌 건 안 건드려요. 화살표·Tab으로 칸 이동, 인쇄는 가로 A4.</p>';
   return html;
 }
 
@@ -426,7 +500,7 @@ function vSetup() {
   html += '<div class="section"><div class="section-h">직원 <span class="cnt num">' + staff.filter((x) => x.active !== false).length + '</span><span class="spacer"></span><button type="button" class="btn sm" data-act="editStaff" data-args="">+ 추가</button></div><div class="card">' + (staff.length ? staff.map((x) => '<button type="button" class="row" data-act="editStaff" data-args="' + x.id + '"><span class="name role-' + esc(x.role) + '">' + esc(x.name) + '</span><span class="meta">' + esc(x.role) + (x.active === false ? ' · 비활성' : '') + '</span><span class="tail">' + esc(tag(x.id)) + '</span></button>').join('') : '<div class="empty">직원을 추가하세요. CM, TM, 원장, 코디 역할별로 글씨 색이 구분됩니다.</div>') + '</div></div>';
   const nDays = Object.keys(days()).length, nNotes = allEntries().length;
   html += '<div class="section"><div class="section-h">데이터</div><div class="card"><div class="row"><span class="meta">학생 ' + Object.keys(S.students).length + ' · 일지 ' + nDays + '일 · 이슈 기록 ' + nNotes + ' · 기간이슈 ' + Object.keys(S.events).length + ' · 요청 ' + Object.keys(S.requests).length + '</span></div><div class="row" style="flex-wrap:wrap;gap:8px">' + '<button type="button" class="btn sm" data-act="exportJson">백업 내려받기</button><button type="button" class="btn sm" data-act="importJson">백업 불러오기</button></div></div></div>';
-  html += '<div class="section"><div class="section-h">사용 안내</div><div class="card" style="padding:12px 14px"><ul class="help" style="margin:0;padding-left:18px"><li><b>표</b>: 시트처럼 한 화면. 등원 칸 클릭, 이슈 칸은 바로 타이핑.</li><li><b>작성자 태그</b>는 자동으로 붙어요. CM은 [이CM]처럼 성+CM, 나머지는 [TM]·[원장]·[코디].</li><li><b>기간 이슈</b>(여행·시험·장기 미등원)는 한 번만 등록하면 해당 기간 내내 표시됩니다.</li><li><b>요청</b>은 받는 사람을 지정해 등록하고, 처리되면 체크.</li><li><b>달력</b>은 지점달력 앱의 일정을 읽어와 보여줘요. 행사·상담 등록은 지점달력에서.</li><li><b>시간표</b>는 좌석 시간표 앱의 배정을 학생 이름으로 맞춰 보여줘요(오늘 교시·과목·강사, 예정 없는 학생은 흐리게). 배정 변경은 시간표 앱에서.</li><li>학생 <b>상태색</b>(위험·주황·집중·초록·좋음)은 학생 상세에서 바꿉니다.</li></ul></div></div>';
+  html += '<div class="section"><div class="section-h">사용 안내</div><div class="card" style="padding:12px 14px"><ul class="help" style="margin:0;padding-left:18px"><li><b>표</b>: 시트처럼 한 화면. 등원 칸 클릭, 이슈 칸은 바로 타이핑.</li><li><b>일정</b>: 예전 DC관리 시트. 하루 치 등원 약속·SC·DC·개별지도·전달사항을 한 장에. 매니저별로 걸러 보고 인쇄도 돼요.</li><li><b>작성자 태그</b>는 자동으로 붙어요. CM은 [이CM]처럼 성+CM, 나머지는 [TM]·[원장]·[코디].</li><li><b>기간 이슈</b>(여행·시험·장기 미등원)는 한 번만 등록하면 해당 기간 내내 표시됩니다.</li><li><b>요청</b>은 받는 사람을 지정해 등록하고, 처리되면 체크.</li><li><b>달력</b>은 지점달력 앱의 일정을 읽어와 보여줘요. 행사·상담 등록은 지점달력에서.</li><li><b>시간표</b>는 좌석 시간표 앱의 배정을 학생 이름으로 맞춰 보여줘요(오늘 교시·과목·강사, 예정 없는 학생은 흐리게). 배정 변경은 시간표 앱에서.</li><li>학생 <b>상태색</b>(위험·주황·집중·초록·좋음)은 학생 상세에서 바꿉니다.</li></ul></div></div>';
   return html;
 }
 
@@ -453,7 +527,8 @@ function shDay(sh) {
   h += '<div class="sheet-b">';
   h += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span class="seg big"><button type="button" class="' + (e.att === 'O' ? 'on' : '') + '" data-act="att" data-args="' + sh.sid + '|O|' + sh.date + '">등원 O</button><button type="button" class="' + (e.att === 'X' ? 'on X' : '') + '" data-act="att" data-args="' + sh.sid + '|X|' + sh.date + '">미등원 X</button></span>' + (e.attBy ? '<span style="font-size:12.5px;color:var(--fg-3)">' + esc(staffName(e.attBy)) + ' <span class="num">' + fmtTime(e.attAt) + '</span></span>' : '') + '</div>';
   if (evs.length) h += '<div>' + evs.map((ev) => '<div class="ev-item"><span><b>' + esc(ev.type) + '</b> ' + esc(ev.text || '') + ' <span class="num">' + fmtMD(ev.from) + (ev.to && ev.to !== ev.from ? '~' + fmtMD(ev.to) : '') + '</span></span><button type="button" class="x" data-act="delEvent" data-args="' + ev.id + '" aria-label="삭제">×</button></div>').join('') + '</div>';
-  const f = e.f || {};
+  const f = e.f || {}; const dc = e.dc || {};
+  if (DC_FIELDS.some(([k]) => dc[k]) || dc.off) h += '<div class="block"><h3>일정 ' + (dc.off ? '<span class="pill n">OFF</span>' : '') + '</h3><div class="kv">' + DC_FIELDS.filter(([k]) => dc[k]).map(([k, l]) => '<span>' + l + ' <b style="color:var(--fg-2)">' + esc(dc[k]) + '</b></span>').join('') + '</div>' + DC_TEXT.filter(([k]) => dc[k]).map(([k, l]) => '<div class="kv" style="margin-top:4px"><span>' + l + ' <b style="color:var(--fg-2);white-space:pre-wrap">' + esc(dc[k]) + '</b></span></div>').join('') + '</div>';
   h += '<div class="block"><div class="field"><label for="f-drowsy">졸음/전자기기</label><input id="f-drowsy" data-field="drowsy" data-live="yes" value="' + esc(f.drowsy || '') + '" placeholder="예 졸음 2회, 폰 1회"></div></div>';
   const memo = (k, l, ph) => '<div class="block memo-box"><h3>' + l + (e[k + 'By'] ? ' <span style="font-weight:500;color:var(--fg-3)">· ' + esc(staffName(e[k + 'By'])) + ' <span class="num">' + fmtDT(e[k + 'At']) + '</span></span>' : '') + '</h3><textarea id="mi-' + k + '" data-issue="' + k + '" data-sid="' + sh.sid + '" data-date="' + sh.date + '" data-live="yes" placeholder="' + ph + '">' + esc(e[k] || '') + '</textarea><div class="hint">' + (k === 'm' ? '자유 메모. 며칠 이어지는 일은 아래 기간 이슈 등록이 편해요.' : me() ? '새로 쓰면 ' + esc(tag(S.me)) + ' 태그가 자동으로 붙어요. 다른 곳을 누르면 저장.' : '작성자를 먼저 선택하세요.') + '</div></div>';
   h += memo('si', '학생 관리 이슈', '태도 · 컨디션 · 학습 이슈 · 지각 · SC/DC · 상담 내용…');
@@ -487,7 +562,7 @@ function shStudentEdit(sh) {
   const s = S.students[sh.sid] || {}; const isNew = !sh.sid;
   const mg = staffList().map((m) => [m.id, m.name + ' (' + m.role + ')']); mg.unshift(['', '미지정']);
   let h = head(isNew ? '학생 추가' : '학생 편집', '');
-  h += '<div class="sheet-b"><div class="grid2">' + inp('se-name', '이름', s.name, '학생 이름') + inp('se-school', '학교', s.school, '예 상계고') + inp('se-grade', '학년', s.grade, '예 고1') + sel('se-mgr', mg, s.manager || '', '담당 매니저') + inp('se-days', '등원 요일', s.days, '예 월수금') + inp('se-phone', '학부모 연락처', s.phone, '선택') + '</div><div class="field" style="margin-top:10px"><label for="se-memo">특이사항</label><textarea id="se-memo">' + esc(s.memo || '') + '</textarea></div>';
+  h += '<div class="sheet-b"><div class="grid2">' + inp('se-name', '이름', s.name, '학생 이름') + inp('se-school', '학교', s.school, '예 상계고') + inp('se-grade', '학년', s.grade, '예 고1') + sel('se-mgr', mg, s.manager || '', '담당 매니저') + inp('se-days', '등원 요일(짧게)', s.days, '예 월수금') + inp('se-sched', '등하원 시간(일정 탭에 표시)', s.sched, '예 월수금 4:30 등원, 토 11-2시') + inp('se-phone', '학부모 연락처', s.phone, '선택') + '</div><div class="field" style="margin-top:10px"><label for="se-memo">특이사항</label><textarea id="se-memo">' + esc(s.memo || '') + '</textarea></div>';
   if (!isNew) h += '<div class="block"><button type="button" class="btn sm ' + (s.active === false ? '' : 'danger') + '" data-act="archiveStudent" data-args="' + sh.sid + '|' + (s.active !== false) + '">' + (s.active === false ? '다시 활성화' : '퇴원/보관 처리') + '</button> <span style="font-size:12.5px;color:var(--fg-3)">기록은 남고 오늘 목록에서만 빠집니다</span></div>';
   h += '</div><div class="sheet-f"><button type="button" class="btn" data-act="close">취소</button><span class="spacer"></span><button type="button" class="btn pri" data-act="submitSheet">저장</button></div>';
   return h;
@@ -551,7 +626,7 @@ function submitSheet() {
   const now = nowIso();
   if (sh.kind === 'sedit') {
     const name = v('se-name'); if (!name) { toast('이름을 입력해 주세요'); return; }
-    const data = { name, school: v('se-school'), grade: v('se-grade'), manager: v('se-mgr'), days: v('se-days'), phone: v('se-phone'), memo: v('se-memo') };
+    const data = { name, school: v('se-school'), grade: v('se-grade'), manager: v('se-mgr'), days: v('se-days'), sched: v('se-sched'), phone: v('se-phone'), memo: v('se-memo') };
     if (!sh.sid) Object.assign(data, { active: true, status: null, createdAt: now });
     W.upsert('students', sh.sid || null, data);
   } else if (sh.kind === 'event') {

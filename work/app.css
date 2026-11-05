@@ -149,6 +149,40 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px;min-width:1
 .board tr.daybreak td{border-top:3px solid var(--line-2)}
 .board tr:hover td{filter:brightness(.985)}
 
+/* 일정(DC) 표 */
+.nav-in{grid-template-columns:repeat(8,1fr)}
+.nav button{font-size:10px}
+.dc-note{margin-top:8px}
+.dc-note textarea{width:100%;padding:6px 10px;border:1px dashed var(--line-2);border-radius:8px;background:var(--surface);font-size:13px;line-height:1.4;resize:vertical}
+.dc-note textarea:focus{border-style:solid}
+table.dc th{font-size:11.5px;line-height:1.2;text-align:center}
+table.dc td.f input{width:64px;text-align:center;padding:3px 4px}
+table.dc td.f.w input{width:110px;text-align:left}
+table.dc td.f textarea{width:150px;min-height:38px;padding:3px 5px;border:1px solid transparent;border-radius:5px;background:transparent;font-size:12px;line-height:1.3;resize:vertical}
+table.dc td.f textarea:hover,table.dc td.f textarea:focus{border-color:var(--line-2);background:var(--bg)}
+table.dc td.issue.dcx{min-width:150px;max-width:260px}
+table.dc td.issue.dcx .view{font-size:12.5px;min-height:24px}
+table.dc td.issue.dcx textarea{min-width:150px;min-height:50px;font-size:12.5px}
+table.dc td.offc{text-align:center;padding:3px}
+table.dc tr.off td{background:var(--surface-2);color:var(--fg-3)}
+table.dc tr.off td.f input:disabled{opacity:.35}
+table.dc th.c1,table.dc td.c1{min-width:34px;text-align:center}
+table.dc th.c2,table.dc td.c2{left:34px}
+@media print{
+  @page{size:A4 landscape;margin:8mm}
+  body{font-size:10px}
+  .nav,.top,.banner,.filters,.daybar,.help,.fab,#layer,#toasts{display:none!important}
+  #app{padding:0;max-width:none}
+  .board-wrap{overflow:visible;max-height:none;border:0;border-radius:0}
+  table.board{min-width:0;width:100%;font-size:9.5px}
+  .board th,.board td{position:static!important;padding:2px 3px;box-shadow:none}
+  table.dc td.f input,table.dc td.f textarea{border:0;background:transparent;width:100%;font-size:9.5px;padding:0;min-height:0}
+  table.dc td.issue.dcx .view{font-size:9.5px;min-height:0}
+  .board td.issue .add,.board td.att button{color:inherit}
+  .dc-note textarea{border:0;padding:0;font-size:10px;resize:none}
+  .evc{border:1px solid var(--warn)}
+}
+
 /* 달력 */
 .cal-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .cal-head .m{font-size:18px;font-weight:700;min-width:110px;text-align:center}

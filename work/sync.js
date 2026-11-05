@@ -17,7 +17,8 @@ window.WorkStore = (function () {
   const DEFAULT_URL = 'https://twnonsqjxngsyavehddq.supabase.co';
   const DAY_WINDOW = 120; // 최근 며칠치 일지를 기기에 내려받아 둘지
   const COLLS = ['staff', 'students', 'events', 'requests'];
-  const DAY_GROUPS = [['att', 'attAt', 'attBy'], ['si', 'siAt', 'siBy'], ['pi', 'piAt', 'piBy'], ['f', 'fAt', 'fBy'], ['m', 'mAt', 'mBy']];
+  const DAY_GROUPS = [['att', 'attAt', 'attBy'], ['si', 'siAt', 'siBy'], ['pi', 'piAt', 'piBy'], ['f', 'fAt', 'fBy'], ['m', 'mAt', 'mBy'], ['dc', 'dcAt', 'dcBy']];
+  const ROOT_GROUPS = [['hdr', 'hdrAt', 'hdrBy'], ['ftr', 'ftrAt', 'ftrBy']];
 
   let cfg = null;
   let meta = emptyMeta();
@@ -85,6 +86,10 @@ window.WorkStore = (function () {
   }
   function mergeDay(a, b, date) {
     const out = { date, s: {} };
+    ROOT_GROUPS.forEach(([val, at, by]) => {
+      const x = a || {}, y = b || {}; const src = (y[at] || '') > (x[at] || '') ? y : x;
+      if (src[val] !== undefined) out[val] = src[val]; if (src[at]) out[at] = src[at]; if (src[by]) out[by] = src[by];
+    });
     const sids = new Set([...Object.keys((a && a.s) || {}), ...Object.keys((b && b.s) || {})]);
     sids.forEach((sid) => {
       const x = ((a && a.s) || {})[sid] || {}, y = ((b && b.s) || {})[sid] || {};
@@ -266,6 +271,12 @@ window.WorkStore = (function () {
       touchDay(date);
     },
     exportJson() { return JSON.stringify({ app: 'academy-work', exportedAt: nowIso(), meta, days }, null, 2); },
+    patchDay(date, group, value, by) {
+      const doc = days[date] || (days[date] = { date, s: {} });
+      const g = ROOT_GROUPS.find((x) => x[0] === group);
+      doc[g[0]] = value; doc[g[1]] = nowIso(); if (by) doc[g[2]] = by;
+      touchDay(date);
+    },
     importJson(text) {
       const j = JSON.parse(text);
       if (!j || j.app !== 'academy-work' || !j.meta) throw new Error('업무관리 백업 파일이 아니에요.');
