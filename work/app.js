@@ -310,6 +310,7 @@ function draw() {
   app.classList.toggle('wide', v === 'board' || v === 'dc');
   app.innerHTML = (v === 'today' ? vToday() : v === 'board' ? vBoard() : v === 'dc' ? vDc() : v === 'students' ? vStudents() : v === 'issues' ? vIssues() : v === 'requests' ? vRequests() : v === 'calendar' ? vCalendar() : vSetup()) + nav();
   if (keep) { const t = app.querySelector('[data-nav="' + keep.nav + '"]'); if (t) { if (t.classList.contains('issue')) { if (keep.ta) focusCell(t); } else t.focus(); } }
+  tickNow();
   drawLayer();
 }
 const ICONS = {
@@ -437,11 +438,11 @@ function vDc() {
         const who = personKey(dc[pk]); if (who) (byPerson[who] || []).forEach((o) => { if (o.sid !== st.id && overlap(r, o.r)) { warn.push(who + ' 같은 시간에 ' + o.name); if (!kind) kind = 'clash2'; } }); }
       if (kind === 'clash') clashN++; else if (kind === 'clash2') dupN++;
       const sv = r ? dispAcademy(r.s) : '', ev = r ? dispAcademy(r.e) : '';
-      return '<td class="f tm ' + kind + '" title="' + esc(warn.join(' / ')) + '"><input type="text" inputmode="decimal" data-dct="' + tk + '|s" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r0 + ',' + c + '" value="' + sv + '"' + (off ? ' disabled' : '') + '><span class="sep">~</span><input type="text" inputmode="decimal" data-dct="' + tk + '|e" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r0 + ',' + (c + 1) + '" value="' + ev + '"' + (off ? ' disabled' : '') + '>' + (warn.length ? '<span class="wi" aria-label="겹침">!</span>' : '') + '</td>';
+      return '<td class="f tm ' + kind + '"' + (r ? ' data-rng="' + r.s + '-' + r.e + '"' : '') + ' title="' + esc(warn.join(' / ')) + '"><input type="text" inputmode="decimal" data-dct="' + tk + '|s" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r0 + ',' + c + '" value="' + sv + '"' + (off ? ' disabled' : '') + '><span class="sep">~</span><input type="text" inputmode="decimal" data-dct="' + tk + '|e" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r0 + ',' + (c + 1) + '" value="' + ev + '"' + (off ? ' disabled' : '') + '>' + (warn.length ? '<span class="wi" aria-label="겹침">!</span>' : '') + '</td>';
     };
     const r0 = r;
     const tutAuto = !dc.tut ? ttTutText(date, st) : '';
-    const inp = (k, c, ph, wide) => { const auto = k === 'tut' && tutAuto; return '<td class="f' + (wide ? ' w' : '') + (k === 'dc1p' || k === 'dc2p' ? ' p' : '') + (k === 'tut' && cls.unreadable ? ' unread' : '') + (auto ? ' auto' : '') + '"' + (k === 'tut' && cls.unreadable ? ' title="시간을 못 읽었어요. 6:35-8:05 처럼 적으면 겹침 검사가 돼요"' : auto ? ' title="시간표 앱에서 가져온 값. 직접 고치면 그게 우선이고, 지우면 다시 시간표 값이 떠요"' : '') + '><input data-dcf="' + k + '" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r + ',' + c + '" value="' + esc(auto ? tutAuto : (dc[k] || '')) + '"' + (off ? ' disabled' : '') + (auto ? ' data-auto="1"' : '') + '>' + (k === 'tut' && cls.unreadable ? '<span class="wi q" aria-label="시간 못 읽음">?</span>' : '') + '</td>'; };
+    const inp = (k, c, ph, wide) => { const auto = k === 'tut' && tutAuto; const rng = k === 'tut' ? rangesIn(auto ? tutAuto : (dc.tut || '')).map((x) => x[0] + '-' + x[1]).join(',') : ''; return '<td class="f' + (wide ? ' w' : '') + (k === 'dc1p' || k === 'dc2p' ? ' p' : '') + (k === 'tut' && cls.unreadable ? ' unread' : '') + (auto ? ' auto' : '') + '"' + (rng && !off ? ' data-rng="' + rng + '"' : '') + (k === 'tut' && cls.unreadable ? ' title="시간을 못 읽었어요. 6:35-8:05 처럼 적으면 겹침 검사가 돼요"' : auto ? ' title="시간표 앱에서 가져온 값. 직접 고치면 그게 우선이고, 지우면 다시 시간표 값이 떠요"' : '') + '><input data-dcf="' + k + '" data-sid="' + st.id + '" data-date="' + date + '" data-nav="' + r + ',' + c + '" value="' + esc(auto ? tutAuto : (dc[k] || '')) + '"' + (off ? ' disabled' : '') + (auto ? ' data-auto="1"' : '') + '>' + (k === 'tut' && cls.unreadable ? '<span class="wi q" aria-label="시간 못 읽음">?</span>' : '') + '</td>'; };
     const txt = (k, c) => '<td class="issue dcx" data-k="' + st.id + '|' + date + '|dc.' + k + '" data-nav="' + r + ',' + c + '" tabindex="0" data-act="editIssue" data-args="' + st.id + '|' + date + '|dc.' + k + '"><div class="view">' + cellView('dc.' + k, dc[k], st.id, date) + '</div></td>';
     rows += '<tr class="' + (off ? 'off' : '') + '">'
       + '<td class="c1 num">' + (i + 1) + '</td>'
@@ -459,7 +460,7 @@ function vDc() {
   if (clashN || dupN) html += '<div class="banner' + (clashN ? ' err' : '') + '">' + (clashN ? '수업과 겹치는 DC ' + clashN + '건 (빨강)' : '') + (clashN && dupN ? ' · ' : '') + (dupN ? '같은 담당자 같은 시간 ' + dupN + '건 (주황)' : '') + '. 칸 위에 마우스를 올리면 뭐랑 겹치는지 나와요.</div>';
   html += '<div class="board-wrap dc-wrap"><table class="board dc"><thead><tr>' + cols.map((c, i) => '<th class="' + (i === 0 ? 'c1' : i === 1 ? 'c2' : '') + '">' + c + '</th>').join('') + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   html += '<div class="dc-note"><label for="dc-ftr">하단 메모</label><textarea id="dc-ftr" data-dayroot="ftr" data-date="' + date + '" data-live="yes" rows="2">' + esc(doc.ftr || '') + '</textarea></div>';
-  html += '<p class="help" style="margin:8px 2px 0">예전 DC관리 시트와 같은 구성이에요. DC 시간은 8:00처럼 치면 돼요(800, 8시도 됨). 시작만 치면 끝은 15분 뒤로 자동(바꿔도 됨). 개별지도 칸은 시간표 앱 배정이 자동으로 들어오고(직접 고치면 그게 우선), DC가 그 시간과 겹치면 빨강, 같은 담당자가 같은 시간에 두 명이면 주황. 개별지도 시간을 못 읽으면 ?가 떠요. 전달사항·NOTE는 클릭해서 메모. 등원 O를 찍으면 실제 등원 시간이 자동으로 들어가요(오늘만). 등하원 칸은 학생 고정 정보라 한 번 적으면 매일 보여요. 전날 값 채우기는 빈 칸만 채우고 적힌 건 안 건드려요. 화살표·Tab으로 칸 이동, 인쇄는 가로 A4.</p>';
+  html += '<p class="help" style="margin:8px 2px 0">예전 DC관리 시트와 같은 구성이에요. DC 시간은 8:00처럼 치면 돼요(800, 8시도 됨). 시작만 치면 끝은 15분 뒤로 자동(바꿔도 됨). 개별지도 칸은 시간표 앱 배정이 자동으로 들어오고(직접 고치면 그게 우선), DC가 그 시간과 겹치면 빨강, 같은 담당자가 같은 시간에 두 명이면 주황. 오늘 날짜에선 지금 진행 중인 DC·수업 칸에 초록불이 들어오고, 10분 안에 시작하면 연한 초록. 개별지도 시간을 못 읽으면 ?가 떠요. 전달사항·NOTE는 클릭해서 메모. 등원 O를 찍으면 실제 등원 시간이 자동으로 들어가요(오늘만). 등하원 칸은 학생 고정 정보라 한 번 적으면 매일 보여요. 전날 값 채우기는 빈 칸만 채우고 적힌 건 안 건드려요. 화살표·Tab으로 칸 이동, 인쇄는 가로 A4.</p>';
   return html;
 }
 
@@ -701,6 +702,21 @@ function submitSheet() {
   }
   toast('저장했어요'); S.sheet = null; render();
 }
+
+// ---------- 지금 시간 표시 (일정 탭) ----------
+function tickNow() {
+  const cells = document.querySelectorAll('[data-rng]'); if (!cells.length) return;
+  const live = S.view === 'dc' && S.date === todayKey(); const d = new Date(); const now = d.getHours() * 60 + d.getMinutes();
+  cells.forEach((td) => {
+    let on = false, soon = false;
+    if (live) td.dataset.rng.split(',').forEach((p) => { const [a, b] = p.split('-').map(Number); if (now >= a && now < b) on = true; else if (a > now && a - now <= 10) soon = true; });
+    td.classList.toggle('now', on); td.classList.toggle('soon', !on && soon);
+    const tr = td.closest('tr'); if (tr && on) tr.classList.add('live');
+  });
+  document.querySelectorAll('table.dc tr.live').forEach((tr) => { if (!tr.querySelector('.now')) tr.classList.remove('live'); });
+}
+setInterval(tickNow, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) tickNow(); });
 
 // ---------- boot ----------
 W.onChange(render);
