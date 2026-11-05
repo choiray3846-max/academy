@@ -67,6 +67,12 @@ function withTag(oldT, newT) {
 }
 const entryAt = (e) => [(e.siAt || ''), (e.piAt || ''), (e.attAt || '')].sort().pop() || '';
 const hasIssue = (e) => !!((e.si && e.si.trim()) || (e.pi && e.pi.trim()));
+const evChips = (evs) => evs.map((ev) => '<span class="evc">' + esc(ev.type) + (ev.text ? '(' + esc(ev.text) + ')' : '') + ' <span class="num">' + fmtMD(ev.from) + (ev.to && ev.to !== ev.from ? '~' + fmtMD(ev.to) : '') + '</span></span>').join('');
+function cellView(field, text, sid, date) {
+  const t = (text || '').trim();
+  if (field === 'm') { const chips = evChips(activeEvents(date, sid)); return (chips ? '<div class="evs">' + chips + '</div>' : '') + (t ? esc(t) : (chips ? '' : '<span class="add">클릭해서 입력</span>')); }
+  return t ? colorize(t) : '<span class="add">클릭해서 입력</span>';
+}
 function allEntries() { const out = []; Object.values(days()).forEach((d) => { Object.entries(d.s || {}).forEach(([sid, e]) => { if (hasIssue(e)) out.push(Object.assign({ date: d.date, sid }, e)); }); }); return out.sort((a, b) => (b.date + entryAt(b)).localeCompare(a.date + entryAt(a))); }
 const openReqs = () => Object.values(S.requests).filter((r) => !r.done);
 function needMe() { if (me()) return true; openSheet({ kind: 'me' }); toast('먼저 본인을 선택해 주세요'); return false; }
@@ -167,10 +173,10 @@ document.addEventListener('focusin', (e) => { const td = e.target; if (td.tagNam
 document.addEventListener('focusout', (e) => {
   const ta = e.target; if (!ta.classList || !ta.classList.contains('cell-edit')) return;
   const td = ta.closest('td.issue'); if (!td) return;
-  const cur = dayEntry(ta.dataset.date, ta.dataset.sid)[ta.dataset.issue] || ''; const merged = withTag(cur, ta.value) || cur;
-  setTimeout(() => { if (td.querySelector('textarea') === ta && document.activeElement !== ta) { td.setAttribute('tabindex', '0'); td.innerHTML = '<div class="view">' + (merged.trim() ? colorize(merged) : '<span class="add">클릭해서 입력</span>') + '</div>'; } }, 0);
+  const fld = ta.dataset.issue; const cur = dayEntry(ta.dataset.date, ta.dataset.sid)[fld] || ''; const merged = fld === 'm' ? ta.value.replace(/\s+$/, '') : (withTag(cur, ta.value) || cur);
+  setTimeout(() => { if (td.querySelector('textarea') === ta && document.activeElement !== ta) { td.setAttribute('tabindex', '0'); td.innerHTML = '<div class="view">' + cellView(fld, merged, ta.dataset.sid, ta.dataset.date) + '</div>'; } }, 0);
 });
-function saveIssue(date, sid, field, val) { if (!needMe()) return; const cur = dayEntry(date, sid)[field] || ''; const merged = withTag(cur, val); if (merged === cur.replace(/\s+$/, '')) return; W.patchEntry(date, sid, field, merged, S.me); }
+function saveIssue(date, sid, field, val) { if (!needMe()) return; const cur = dayEntry(date, sid)[field] || ''; const merged = field === 'm' ? val.replace(/\s+$/, '') : withTag(cur, val); if (merged === cur.replace(/\s+$/, '')) return; W.patchEntry(date, sid, field, merged, S.me); }
 function saveField(date, sid, field, val) { if (!needMe()) return; const cur = dayEntry(date, sid); const f = Object.assign({}, cur.f || {}); if ((f[field] || '') === val) return; f[field] = val; W.patchEntry(date, sid, 'f', f, S.me); }
 
 // ---------- toast ----------
@@ -179,12 +185,12 @@ let toastT; function toast(msg) { const t = $('#toasts'); t.innerHTML = '<div cl
 // ---------- render ----------
 let raf = 0, pending = false;
 const typing = () => { const a = document.activeElement; return a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && a.type !== 'search')) && $('#app').contains(a); };
-function render() { if (typing()) { pending = true; return; } if (raf) return; raf = requestAnimationFrame(() => { raf = 0; draw(); }); }
-document.addEventListener('focusout', (e) => { if (pending && $('#app').contains(e.target)) { pending = false; setTimeout(() => { if (!typing()) render(); }, 80); } });
+function render() { if (typing()) { pending = true; return; } if (raf) return; raf = requestAnimationFrame(() => { raf = 0; if (typing()) { pending = true; return; } draw(); }); }
+document.addEventListener('focusout', (e) => { if (pending && $('#app').contains(e.target)) { pending = false; setTimeout(() => { if (!typing()) render(); else pending = true; }, 80); } });
 function draw() {
   refresh();
   const app = $('#app'); const v = S.view;
-  const ae = document.activeElement; const keep = ae && app.contains(ae) && ae.dataset.nav ? { nav: ae.dataset.nav, ta: ae.tagName === 'TEXTAREA' } : null;
+  const ae = document.activeElement; const navEl = ae && app.contains(ae) && ae.closest ? ae.closest('[data-nav]') : null; const keep = navEl ? { nav: navEl.dataset.nav, ta: ae.tagName === 'TEXTAREA' } : null;
   app.classList.toggle('wide', v === 'board');
   app.innerHTML = (v === 'today' ? vToday() : v === 'board' ? vBoard() : v === 'students' ? vStudents() : v === 'issues' ? vIssues() : v === 'requests' ? vRequests() : v === 'calendar' ? vCalendar() : vSetup()) + nav();
   if (keep) { const t = app.querySelector('[data-nav="' + keep.nav + '"]'); if (t) { if (t.classList.contains('issue')) { if (keep.ta) focusCell(t); } else t.focus(); } }
@@ -261,8 +267,8 @@ function vBoard() {
   let rows = ''; let ri = 0;
   dates.forEach((d, di) => {
     studs.forEach((s, si) => {
-      const r = ri++; const e = dayEntry(d, s.id); const f = e.f || {}; const evs = activeEvents(d, s.id);
-      const issue = (k) => { const t = e[k] || ''; return '<td class="issue" data-k="' + s.id + '|' + d + '|' + k + '" data-nav="' + r + ',' + (k === 'si' ? 2 : 3) + '" tabindex="0" data-act="editIssue" data-args="' + s.id + '|' + d + '|' + k + '"><div class="view">' + (t.trim() ? colorize(t) : '<span class="add">클릭해서 입력</span>') + '</div></td>'; };
+      const r = ri++; const e = dayEntry(d, s.id); const f = e.f || {};
+      const issue = (k) => '<td class="issue' + (k === 'm' ? ' memo-cell' : '') + '" data-k="' + s.id + '|' + d + '|' + k + '" data-nav="' + r + ',' + (k === 'si' ? 2 : k === 'pi' ? 3 : 4) + '" tabindex="0" data-act="editIssue" data-args="' + s.id + '|' + d + '|' + k + '"><div class="view">' + cellView(k, e[k], s.id, d) + '</div></td>';
       rows += '<tr' + (multi && si === 0 && di > 0 ? ' class="daybreak"' : '') + '>'
         + '<td class="c1 sm">' + esc(staffName(s.manager)) + '</td>'
         + '<td class="c2 name ' + (s.status ? 'st-' + s.status : '') + '" data-act="openDay" data-args="' + s.id + '|' + d + '" title="' + (STATUS_NAME[s.status] || '상태 미설정') + '">' + esc(s.name) + '</td>'
@@ -270,13 +276,12 @@ function vBoard() {
         + (multi ? '<td class="date num">' + fmtK(d) + '</td>' : '')
         + '<td class="att"><button type="button" class="' + (e.att || '') + '" data-nav="' + r + ',0" data-act="attCycle" data-args="' + s.id + '|' + d + '">' + (e.att || '–') + '</button></td>'
         + '<td class="f"><input data-nav="' + r + ',1" data-field="drowsy" data-sid="' + s.id + '" data-date="' + d + '" value="' + esc(f.drowsy || '') + '" aria-label="졸음/전자기기" placeholder=""></td>'
-        + issue('si') + issue('pi')
-        + '<td class="memo">' + evs.map((ev) => esc(ev.type) + (ev.text ? '(' + esc(ev.text) + ')' : '') + ' <span class="num">' + fmtMD(ev.from) + (ev.to && ev.to !== ev.from ? '~' + fmtMD(ev.to) : '') + '</span>').join('<br>') + '</td>'
+        + issue('si') + issue('pi') + issue('m')
         + '</tr>';
     });
   });
   html += '<div class="board-wrap"><table class="board"><thead><tr>' + th + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-  html += '<p class="help" style="margin:8px 2px 0">등원 칸은 누를 때마다 O → X → 빈칸. 졸음/전자기기와 이슈 칸은 클릭해서 바로 쓰면 다른 칸으로 넘어갈 때 저장돼요. 새로 쓰기 시작하면 작성자 태그([이CM] 같은)가 자동으로 붙어요. 화살표 키로 옆 칸·다른 학생 칸으로 이동(글이 있는 칸에선 Ctrl+화살표), Tab도 돼요. 이슈 칸에선 Ctrl+Enter로 아래 학생. 이름을 누르면 상세 창.</p>';
+  html += '<p class="help" style="margin:8px 2px 0">등원 칸은 누를 때마다 O → X → 빈칸. 졸음/전자기기와 이슈 칸은 클릭해서 바로 쓰면 다른 칸으로 넘어갈 때 저장돼요. 새로 쓰기 시작하면 작성자 태그([이CM] 같은)가 자동으로 붙어요. 화살표 키로 옆 칸·다른 학생 칸으로 이동(글이 있는 칸에선 Ctrl+화살표), Tab도 돼요. 이슈·메모 칸에선 Ctrl+Enter로 아래 학생. 메모 칸은 태그 없이 자유롭게. 이름을 누르면 상세 창.</p>';
   return html;
 }
 
@@ -402,9 +407,10 @@ function shDay(sh) {
   if (evs.length) h += '<div>' + evs.map((ev) => '<div class="ev-item"><span><b>' + esc(ev.type) + '</b> ' + esc(ev.text || '') + ' <span class="num">' + fmtMD(ev.from) + (ev.to && ev.to !== ev.from ? '~' + fmtMD(ev.to) : '') + '</span></span><button type="button" class="x" data-act="delEvent" data-args="' + ev.id + '" aria-label="삭제">×</button></div>').join('') + '</div>';
   const f = e.f || {};
   h += '<div class="block"><div class="field"><label for="f-drowsy">졸음/전자기기</label><input id="f-drowsy" data-field="drowsy" data-live="yes" value="' + esc(f.drowsy || '') + '" placeholder="예 졸음 2회, 폰 1회"></div></div>';
-  const memo = (k, l, ph) => '<div class="block memo-box"><h3>' + l + (e[k + 'By'] ? ' <span style="font-weight:500;color:var(--fg-3)">· ' + esc(staffName(e[k + 'By'])) + ' <span class="num">' + fmtDT(e[k + 'At']) + '</span></span>' : '') + '</h3><textarea id="mi-' + k + '" data-issue="' + k + '" data-sid="' + sh.sid + '" data-date="' + sh.date + '" data-live="yes" placeholder="' + ph + '">' + esc(e[k] || '') + '</textarea><div class="hint">' + (me() ? '새로 쓰면 ' + esc(tag(S.me)) + ' 태그가 자동으로 붙어요. 다른 곳을 누르면 저장.' : '작성자를 먼저 선택하세요.') + '</div></div>';
+  const memo = (k, l, ph) => '<div class="block memo-box"><h3>' + l + (e[k + 'By'] ? ' <span style="font-weight:500;color:var(--fg-3)">· ' + esc(staffName(e[k + 'By'])) + ' <span class="num">' + fmtDT(e[k + 'At']) + '</span></span>' : '') + '</h3><textarea id="mi-' + k + '" data-issue="' + k + '" data-sid="' + sh.sid + '" data-date="' + sh.date + '" data-live="yes" placeholder="' + ph + '">' + esc(e[k] || '') + '</textarea><div class="hint">' + (k === 'm' ? '자유 메모. 며칠 이어지는 일은 아래 기간 이슈 등록이 편해요.' : me() ? '새로 쓰면 ' + esc(tag(S.me)) + ' 태그가 자동으로 붙어요. 다른 곳을 누르면 저장.' : '작성자를 먼저 선택하세요.') + '</div></div>';
   h += memo('si', '학생 관리 이슈', '태도 · 컨디션 · 학습 이슈 · 지각 · SC/DC · 상담 내용…');
   h += memo('pi', '학부모 관리 이슈', '학부모 연락 내용 · 이슈 관리 · 요청사항 · 카톡 내용…');
+  h += memo('m', '기간 이슈 / 메모', '예 11/5~8 미등원(여행), 책 두고 감…');
   h += '<div class="block" style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" data-act="newEvent" data-args="' + sh.sid + '">기간 이슈 등록</button><button type="button" class="btn" data-act="newRequest" data-args="' + sh.sid + '">요청 보내기</button></div>';
   return h + '</div>';
 }
@@ -418,7 +424,7 @@ function shStudent(sh) {
   const evs = Object.values(S.events).filter((e) => e.sid === s.id).sort((a, b) => b.from.localeCompare(a.from));
   h += '<div class="block"><h3>기간 이슈</h3>' + (evs.length ? evs.map((ev) => '<div class="ev-item"><span><b>' + esc(ev.type) + '</b> ' + esc(ev.text || '') + ' <span class="num">' + fmtMD(ev.from) + (ev.to && ev.to !== ev.from ? '~' + fmtMD(ev.to) : '') + '</span></span><button type="button" class="x" data-act="delEvent" data-args="' + ev.id + '" aria-label="삭제">×</button></div>').join('') : '<div style="color:var(--fg-3);font-size:13.5px">없음</div>') + '<div style="margin-top:8px"><button type="button" class="btn sm" data-act="newEvent" data-args="' + s.id + '">+ 기간 이슈</button> <button type="button" class="btn sm" data-act="newRequest" data-args="' + s.id + '">+ 요청</button></div></div>';
   const rows = []; let o = 0, x = 0;
-  dates.forEach((d) => { const e = ((days()[d] || {}).s || {})[s.id]; if (!e) return; if (e.att === 'O') o++; if (e.att === 'X') x++; const hi = hasIssue(e); const f = e.f || {}; if (!e.att && !hi && !f.drowsy) return; rows.push('<div class="tl-day"><div class="dh"><span class="num">' + fmtK(d) + '</span>' + (e.att ? '<span class="pill att-' + e.att + '">' + (e.att === 'O' ? '등원' : '미등원') + '</span>' : '') + '<button type="button" class="btn sm ghost" style="margin-left:auto" data-act="gotoDay" data-args="' + d + '|' + s.id + '">열기</button></div>' + (f.drowsy ? '<div class="kv"><span>졸음/전자기기 <b style="color:var(--fg-2)">' + esc(f.drowsy) + '</b></span></div>' : '') + (hi ? '<div class="card" style="margin-top:6px">' + entryHTML(e, d, s.id, false) + '</div>' : '') + '</div>'); });
+  dates.forEach((d) => { const e = ((days()[d] || {}).s || {})[s.id]; if (!e) return; if (e.att === 'O') o++; if (e.att === 'X') x++; const hi = hasIssue(e); const f = e.f || {}; if (!e.att && !hi && !f.drowsy && !(e.m && e.m.trim())) return; rows.push('<div class="tl-day"><div class="dh"><span class="num">' + fmtK(d) + '</span>' + (e.att ? '<span class="pill att-' + e.att + '">' + (e.att === 'O' ? '등원' : '미등원') + '</span>' : '') + '<button type="button" class="btn sm ghost" style="margin-left:auto" data-act="gotoDay" data-args="' + d + '|' + s.id + '">열기</button></div>' + (f.drowsy || (e.m && e.m.trim()) ? '<div class="kv">' + (f.drowsy ? '<span>졸음/전자기기 <b style="color:var(--fg-2)">' + esc(f.drowsy) + '</b></span>' : '') + (e.m && e.m.trim() ? '<span>메모 <b style="color:var(--fg-2)">' + esc(e.m) + '</b></span>' : '') + '</div>' : '') + (hi ? '<div class="card" style="margin-top:6px">' + entryHTML(e, d, s.id, false) + '</div>' : '') + '</div>'); });
   h += '<div class="block"><h3>기록 <span style="font-weight:500;color:var(--fg-3)">최근 ' + dates.length + '일 중 등원 <span class="num">' + o + '</span> · 미등원 <span class="num">' + x + '</span></span></h3><div class="card">' + (rows.length ? rows.join('') : '<div class="empty" style="padding:14px">아직 기록이 없어요.</div>') + '</div></div>';
   return h + '</div>';
 }

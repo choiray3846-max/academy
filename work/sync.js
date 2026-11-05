@@ -17,7 +17,7 @@ window.WorkStore = (function () {
   const DEFAULT_URL = 'https://twnonsqjxngsyavehddq.supabase.co';
   const DAY_WINDOW = 120; // 최근 며칠치 일지를 기기에 내려받아 둘지
   const COLLS = ['staff', 'students', 'events', 'requests'];
-  const DAY_GROUPS = [['att', 'attAt', 'attBy'], ['si', 'siAt', 'siBy'], ['pi', 'piAt', 'piBy'], ['f', 'fAt', 'fBy']];
+  const DAY_GROUPS = [['att', 'attAt', 'attBy'], ['si', 'siAt', 'siBy'], ['pi', 'piAt', 'piBy'], ['f', 'fAt', 'fBy'], ['m', 'mAt', 'mBy']];
 
   let cfg = null;
   let meta = emptyMeta();
